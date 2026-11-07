@@ -82,6 +82,138 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->assertSame('localhost-player', $this->apps['Player']['project']);
     }
 
+    public function testAppReadmeIsUsedAsAnEscapedDescription(): void
+    {
+        $app = $this->apps['First'];
+        file_put_contents(dirname($app['file']) . '/readme.md', "# First\n<script>alert(1)</script>\n");
+        $catalog = array_column($this->store->catalog(), null, 'id');
+        $this->assertSame("# First\n<script>alert(1)</script>", $catalog[$app['id']]['description']);
+        $this->assertNull($catalog[$this->apps['Second']['id']]['description']);
+        $html = view('partials/app_card', [
+            'app' => $catalog[$app['id']], 'isRunning' => false, 'canManage' => false,
+        ]);
+        $this->assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $html);
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
+    }
+
+    public function testAppReadmeCannotEscapeCatalog(): void
+    {
+        symlink(__FILE__, dirname($this->apps['First']['file']) . '/readme.md');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('readable file within the catalog');
+        $this->store->catalog();
+    }
+
+    public function testAppDescriptionRendersMarkdownWithoutUnsafeHtmlOrLinks(): void
+    {
+        $app = $this->apps['First'];
+        $app['description'] = "# Heading\n\n**Bold** and [website](https://example.com)\n\n"
+            . "- First item\n- Second item\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert(1))";
+        $html = view('partials/app_card', [
+            'app' => $app, 'isRunning' => false, 'canManage' => false,
+        ]);
+        $this->assertStringContainsString('<h1>Heading</h1>', $html);
+        $this->assertStringContainsString('<strong>Bold</strong>', $html);
+        $this->assertStringContainsString('<a href="https://example.com">website</a>', $html);
+        $this->assertStringContainsString('<li>First item</li>', $html);
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
+        $this->assertStringNotContainsString('href="javascript:', $html);
+    }
+
+    public function testStopAllTargetsOnlyCatalogProjectContainers(): void
+    {
+        putenv('CATEGORY_TEST_PROJECT=' . $this->apps['First']['project']);
+        $this->store->stopAll();
+        $calls = array_map(static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            file($this->directory . '/calls'));
+        $stops = array_values(array_filter($calls, static fn (array $call): bool => $call[0] === 'stop'));
+        $this->assertSame([['stop', 'category-container']], $stops);
+        foreach (array_filter($calls, static fn (array $call): bool => $call[0] === 'ps') as $call) {
+            $this->assertContains('--all', $call);
+            $this->assertContains('--filter', $call);
+            $this->assertContains(substr($call[array_key_last($call)], strlen('label=com.docker.compose.project=')),
+                array_column($this->apps, 'project'));
+        }
+    }
+
+    public function testStopAllButtonAndEndpointAreAdminOnly(): void
+    {
+        $this->withSession(['ldap_user' => [
+            'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]])->post('catalog/stop-all')->assertStatus(403);
+        $this->assertFileDoesNotExist($this->directory . '/calls');
+        $page = $this->get('/');
+        $this->assertStringNotContainsString('Stop all apps', $page->response()->getBody());
+        $page = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('/');
+        $this->assertStringContainsString('Stop all apps', $page->response()->getBody());
+    }
+
+    public function testRefreshRebuildsAndRecreatesRunningAppWithoutRemovingVolumes(): void
+    {
+        $app = $this->apps['First'];
+        putenv('CATEGORY_TEST_PROJECT=' . $app['project']);
+        $this->store->refresh($app);
+        $calls = array_map(static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            file($this->directory . '/calls'));
+        $this->assertCount(3, $calls);
+        $this->assertSame(['pull', '--ignore-buildable'], array_slice($calls[0], -2));
+        $this->assertSame(['build', '--pull', '--no-cache'], array_slice($calls[1], -3));
+        $this->assertSame(
+            ['up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans'],
+            array_slice($calls[2], -5),
+        );
+        foreach ($calls as $call) {
+            $this->assertNotContains('down', $call);
+            $this->assertNotContains('--volumes', $call);
+        }
+    }
+
+    public function testRefreshCannotBypassSingletonExclusivity(): void
+    {
+        putenv('CATEGORY_TEST_PROJECT=' . $this->apps['First']['project']);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Stop it before starting');
+        $this->store->refresh($this->apps['Second']);
+    }
+
+    public function testRefreshReusesSavedEnvironment(): void
+    {
+        $app = $this->apps['Unlimited'];
+        file_put_contents(dirname($app['file']) . '/env', "SERVER_PORT=12345\n");
+        $this->store->install($app, ['SERVER_PORT' => '23456']);
+        $this->store->refresh($app);
+        $calls = file($this->directory . '/calls');
+        foreach (array_slice($calls, 1) as $call) {
+            $arguments = json_decode($call, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertContains(WRITEPATH . 'app-environments/' . $app['id'] . '.env', $arguments);
+        }
+        $this->assertSame('23456', $this->store->environmentFields($app)['SERVER_PORT']['value']);
+    }
+
+    public function testRefreshFailureIsSavedForLogs(): void
+    {
+        $app = $this->apps['First'];
+        putenv('CATEGORY_TEST_VERBOSE=1');
+        try {
+            $this->store->refresh($app);
+            $this->fail('Refresh should fail.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('simulated failure', $exception->getMessage());
+        }
+        $this->assertStringContainsString('simulated failure',
+            file_get_contents(WRITEPATH . 'app-startup-failures/' . $app['id'] . '.log'));
+    }
+
+    public function testRefreshIsAdminOnly(): void
+    {
+        $this->withSession(['ldap_user' => [
+            'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]])->post('apps/' . $this->apps['First']['id'] . '/refresh')->assertStatus(403);
+        $this->assertFileDoesNotExist($this->directory . '/calls');
+    }
+
     public function testLogsIncludeAllProjectContainersAndBothOutputStreams(): void
     {
         $app = $this->apps['First'];

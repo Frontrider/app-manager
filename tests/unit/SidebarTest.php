@@ -28,7 +28,7 @@ final class SidebarTest extends CIUnitTestCase
         parent::tearDown();
     }
 
-    public function testSidebarIsPublicAndContainsOnlyRunningAppLinks(): void
+    public function testSidebarIsPublicAndContainsDocsAndRunningAppLinks(): void
     {
         $apps = (new ApplicationModel())->catalog();
         $this->assertNotEmpty($apps);
@@ -43,18 +43,24 @@ final class SidebarTest extends CIUnitTestCase
         $this->assertStringContainsString('application/json', $result->response()->getHeaderLine('Content-Type'));
         $body = $result->response()->getBody();
         $this->assertSame(
-            [['name' => $app['name'], 'href' => $app['caddyPath']]],
+            [
+                ['name' => 'Docs', 'href' => '/docs/'],
+                ['name' => $app['name'], 'href' => $app['caddyPath']],
+            ],
             json_decode($body, true, 512, JSON_THROW_ON_ERROR),
         );
         $this->assertStringNotContainsString('<script', $body);
         $this->assertStringNotContainsString('<html', $body);
     }
 
-    public function testNoRunningAppsProducesEmptyLinks(): void
+    public function testNoRunningAppsStillIncludesDocs(): void
     {
         $result = $this->get('sidebar');
         $result->assertStatus(200);
-        $this->assertSame([], json_decode($result->response()->getBody(), true, 512, JSON_THROW_ON_ERROR));
+        $this->assertSame(
+            [['name' => 'Docs', 'href' => '/docs/']],
+            json_decode($result->response()->getBody(), true, 512, JSON_THROW_ON_ERROR),
+        );
     }
 
     public function testRunningGameServerWithoutWebInterfaceIsOmitted(): void
@@ -66,6 +72,9 @@ final class SidebarTest extends CIUnitTestCase
 
         $result = $this->get('sidebar');
         $result->assertStatus(200);
-        $this->assertSame([], json_decode($result->response()->getBody(), true, 512, JSON_THROW_ON_ERROR));
+        $this->assertSame(
+            [['name' => 'Docs', 'href' => '/docs/']],
+            json_decode($result->response()->getBody(), true, 512, JSON_THROW_ON_ERROR),
+        );
     }
 }

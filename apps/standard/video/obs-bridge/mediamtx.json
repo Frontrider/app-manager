@@ -1,0 +1,32 @@
+{
+  "authMethod": "internal",
+  "authInternalUsers": [
+    {
+      "user": "publisher",
+      "pass": "",
+      "permissions": [{"action": "publish", "path": "bridge"}]
+    },
+    {
+      "user": "reader",
+      "pass": "",
+      "permissions": [{"action": "read", "path": "bridge"}]
+    }
+  ],
+  "rtsp": false,
+  "rtmp": true,
+  "rtmpAddress": ":1935",
+  "hls": true,
+  "hlsAddress": ":8888",
+  "webrtc": false,
+  "srt": false,
+  "api": false,
+  "metrics": false,
+  "pprof": false,
+  "playback": false,
+  "paths": {
+    "bridge": {
+      "source": "publisher",
+      "overridePublisher": false
+    }
+  }
+}

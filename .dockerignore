@@ -16,3 +16,7 @@ writable/*
 !writable/uploads/.gitkeep
 !writable/debugbar
 !writable/debugbar/.gitkeep
+!docs
+docs/node_modules
+docs/.docusaurus
+docs/build

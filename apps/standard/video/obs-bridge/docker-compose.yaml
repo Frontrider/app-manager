@@ -1,0 +1,34 @@
+services:
+  obs-bridge:
+    build:
+      context: .
+    image: localhost-obs-bridge:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      MEDIAMTX_CONFIG_FILE: "${MEDIAMTX_CONFIG_FILE:-}"
+      MTX_AUTHINTERNALUSERS_0_PASS: "${PUBLISH_PASSWORD:-}"
+      MTX_AUTHINTERNALUSERS_1_PASS: "${READ_PASSWORD:-}"
+    volumes:
+      - data:/data:r
+    networks:
+      - internal
+    labels:
+      - "caddy=:90"
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.10_redir=/obs-bridge /obs-bridge/bridge/ permanent"
+      - "caddy.10_handle_path=/obs-bridge/*"
+      - "caddy.10_handle_path.reverse_proxy={{upstreams 8888}}"
+      - 'caddy.10_handle_path.reverse_proxy.header_down=Location ^(/.*) /obs-bridge$${1}'
+      - "caddy_1="
+      - "caddy_1.layer4.:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy={{upstreams 1935}}"
+
+volumes:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

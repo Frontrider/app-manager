@@ -16,3 +16,5 @@ $routes->get('apps/(:segment)/logs/output', 'Home::logOutput/$1', ['filter' => '
 $routes->post('logout', 'Auth::logout', ['filter' => 'ldapSession']);
 $routes->post('apps/(:segment)/install', 'Home::install/$1', ['filter' => 'ldapSession:admin']);
 $routes->post('apps/(:segment)/uninstall', 'Home::uninstall/$1', ['filter' => 'ldapSession:admin']);
+$routes->post('apps/(:segment)/refresh', 'Home::refresh/$1', ['filter' => 'ldapSession:admin']);
+$routes->post('catalog/stop-all', 'Home::stopAll', ['filter' => 'ldapSession:admin']);

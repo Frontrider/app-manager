@@ -1,0 +1,22 @@
+# RTMP port. The core Caddy container must expose this TCP port to the OBS machines.
+SERVER_PORT=1935
+
+# Required publisher password when using the bundled configuration. Use a URL-safe password.
+# Publishing OBS: Settings > Stream > Custom.
+# Server: rtmp://<server>:<SERVER_PORT>
+# Stream key: bridge?user=publisher&pass=<PUBLISH_PASSWORD>
+PUBLISH_PASSWORD=
+
+# Required reader password when using the bundled configuration. Use a different URL-safe password.
+# Receiving OBS: add a Media Source, disable Local File, and use:
+# rtmp://<server>:<SERVER_PORT>/bridge?user=reader&pass=<READ_PASSWORD>
+# Use H.264 video and AAC audio on the publishing OBS.
+# Browser playback: /obs-bridge/bridge/ with username reader and this password.
+READ_PASSWORD=
+
+# Optional absolute path to an existing JSON or YAML file on the Docker host.
+# Leave blank to use the simple bundled bridge configuration.
+# Custom configuration replaces the bundled file and controls its own authentication.
+# The file must be readable by UID 1000. Keep RTMP on 1935 and HLS on 8888 for the proxy.
+# Official reference: https://mediamtx.org/docs/references/configuration-file
+MEDIAMTX_CONFIG_FILE=

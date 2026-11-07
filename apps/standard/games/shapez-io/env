@@ -1,3 +1,0 @@
-# HTTP listener; shapez is served under /shapez/.
-# Nginx's internal HTTP port is fixed at 8080.
-HTTP_PORT=90

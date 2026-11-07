@@ -72,6 +72,14 @@
                                 </li>
                             <?php endforeach ?>
                         </ul>
+                        <?php if ($canManage ?? false): ?>
+                            <form action="<?= esc(site_url('catalog/stop-all'), 'attr') ?>" method="post"
+                                  class="mt-5" data-pending-label="Stopping all...">
+                                <?= csrf_field() ?>
+                                <button class="button is-danger is-light is-fullwidth" type="submit"
+                                        aria-live="polite">Stop all apps</button>
+                            </form>
+                        <?php endif ?>
                     </nav>
                 </aside>
                 <section class="column">

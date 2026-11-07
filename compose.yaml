@@ -4,13 +4,14 @@ services:
       context: .
     image: app-manager:latest
     restart: unless-stopped
-    expose:
-      - "9000"
     networks:
       - internal
     labels:
       caddy: "${CADDY_SITE:-:90}"
       caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      caddy.2_redir: "/docs /docs/ permanent"
+      caddy.2_handle: "/docs/*"
+      caddy.2_handle.reverse_proxy: "{{upstreams 8080}}"
       # The root catch-all follows the other applications' path handlers.
       # Explicit rewrite avoids checking for PHP files in Caddy's container.
       caddy.99_handle.0_rewrite: "* /index.php"
@@ -91,6 +92,7 @@ services:
         - >-
           SCRIPT_NAME=/fpm-ping SCRIPT_FILENAME=/fpm-ping REQUEST_METHOD=GET
           cgi-fcgi -bind -connect 127.0.0.1:9000 | grep -q pong
+          && busybox wget -q -O /dev/null http://127.0.0.1:8080/docs/
       interval: 30s
       timeout: 5s
       start_period: 20s

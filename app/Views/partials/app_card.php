@@ -1,4 +1,3 @@
-<?php $destination = $isRunning ? $app['caddyPath'] : $app['website'] ?>
 <div class="column is-half-tablet is-one-third-desktop">
     <article class="card app-card">
         <img class="app-logo" src="<?= esc(site_url('apps/' . $app['id'] . '/logo'), 'attr') ?>"
@@ -14,20 +13,29 @@
                     </span>
                 </div>
             </div>
-            <?php if ($destination !== null): ?>
-                <a class="button is-text mt-3" target="_blank" href="<?= esc($destination, 'attr') ?>">
-                    <?= $isRunning ? 'Open app' : 'Official website' ?>
-                </a>
+            <?php if (! empty($app['description'])): ?>
+                <div class="content" style="overflow-wrap: anywhere"><?= (new \League\CommonMark\GithubFlavoredMarkdownConverter([
+                    'html_input' => 'escape',
+                    'allow_unsafe_links' => false,
+                    'max_nesting_level' => 50,
+                ]))->convert($app['description']) ?></div>
+            <?php endif ?>
+            <?php if ($isRunning && $app['caddyPath'] !== null): ?>
+                <a class="button is-text mt-3" target="_blank" rel="noopener" href="<?= esc($app['caddyPath'], 'attr') ?>">Open app</a>
+            <?php endif ?>
+            <?php if ($app['website'] !== null): ?>
+                <a class="button is-text mt-3" target="_blank" rel="noopener" href="<?= esc($app['website'], 'attr') ?>">Official website</a>
             <?php endif ?>
             <?php if (($blockedBy ?? null) !== null): ?>
                 <p class="help mt-3">Stop <?= esc($blockedBy) ?> to use another app in this category.</p>
             <?php endif ?>
             <?php if ($canManage ?? false): ?>
-                <a class="button is-text mt-3" href="<?= esc(site_url('apps/' . $app['id'] . '/logs'), 'attr') ?>">View logs</a>
+                <a class="button is-text mt-3" target="_blank" rel="noopener" href="<?= esc(site_url('apps/' . $app['id'] . '/logs'), 'attr') ?>">View logs</a>
             <?php endif ?>
         </div>
         <?php if ($canManage ?? false): ?>
-        <footer class="card-footer p-4">
+        <footer class="card-footer is-block p-4">
+            <div class="is-flex mb-3">
             <?php if ($isRunning): ?>
                 <form action="<?= site_url('apps/' . $app['id'] . '/uninstall') ?>" method="post" class="is-fullwidth"
                       data-pending-label="Stopping...">
@@ -79,6 +87,13 @@
                     <?php endif ?>
                 </form>
             <?php endif ?>
+                <form action="<?= esc(site_url('apps/' . $app['id'] . '/refresh'), 'attr') ?>" method="post"
+                      class="ml-3" data-pending-label="Refreshing...">
+                    <?= csrf_field() ?>
+                    <button class="button is-warning is-light is-fullwidth" type="submit" aria-live="polite"
+                            <?= ($blockedBy ?? null) !== null ? 'disabled' : '' ?>>Refresh app</button>
+                </form>
+            </div>
         </footer>
         <?php endif ?>
     </article>

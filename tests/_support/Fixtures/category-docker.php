@@ -2,11 +2,22 @@
 <?php
 
 if (($argv[1] ?? '') === 'ps') {
+    if (in_array('--quiet', $argv, true) && in_array('--all', $argv, true)) {
+        file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
+        if (in_array('label=com.docker.compose.project=' . getenv('CATEGORY_TEST_PROJECT'), $argv, true)) {
+            echo "category-container\n";
+        }
+        exit(0);
+    }
     if (in_array('--format', $argv, true)) {
         file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
         if (getenv('CATEGORY_TEST_PROJECT')) {
             echo "category-container\tlocalhost-first-server-1\n";
             echo "category-init\tlocalhost-first-init-1\n";
+        }
+        if (($argv[1] ?? '') === 'stop') {
+            file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
+            exit(0);
         }
         exit(0);
     }

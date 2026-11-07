@@ -9,9 +9,12 @@ services:
       - rqbit_state:/state
 
   rqbit:
-    image: ikatson/rqbit:latest
+    build:
+      context: .
+    image: localhost-rqbit:latest
     restart: unless-stopped
-    user: "1000:1000"
+    # Configure DNS as root; the entrypoint runs rqbit as UID/GID 1000.
+    user: "0:0"
     depends_on:
       rqbit-init:
         condition: service_completed_successfully
@@ -20,25 +23,25 @@ services:
       HOME: /state
       XDG_DATA_HOME: /state/db
       XDG_CACHE_HOME: /state/cache
-      RQBIT_HTTP_API_LISTEN_ADDR: "0.0.0.0:${HTTP_PORT:?Set HTTP_PORT in env}"
+      RQBIT_HTTP_API_LISTEN_ADDR: "0.0.0.0:80"
       RQBIT_LISTEN_PORT: "${SERVER_PORT:?Set SERVER_PORT in env}"
     command: ["server", "start", "/data"]
     networks:
       - internal
     labels:
-      caddy: ':90'
-      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
-      caddy.@rqbit_other.not.header_regexp: 'Remote-Groups (^|[,[:space:]])lldap_admin([,[:space:]]|$)'
-      caddy.0_redir: '/rqbit /rqbit/web/ permanent'
-      caddy.9_handle_path: '/rqbit/*'
-      caddy.9_handle_path.0_forward_auth: '127.0.0.1:9091'
-      caddy.9_handle_path.0_forward_auth.uri: '/auth/api/authz/forward-auth'
-      caddy.9_handle_path.0_forward_auth.copy_headers: 'Remote-User Remote-Groups Remote-Name Remote-Email'
-      caddy.9_handle_path.1_respond: '@rqbit_other "rqbit is only available to administrators." 403'
-      caddy.9_handle_path.2_reverse_proxy: '{{upstreams ${HTTP_PORT}}}'
-      caddy_1: ''
-      "caddy_1.layer4.:${SERVER_PORT}.route.proxy": '{{upstreams ${SERVER_PORT}}}'
-      "caddy_1.layer4.udp/:${SERVER_PORT}.route.proxy": 'udp/{{upstreams ${SERVER_PORT}}}'
+      - "caddy=:90"
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - 'caddy.@rqbit_other.not.header_regexp=Remote-Groups (^|[,[:space:]])lldap_admin([,[:space:]]|$$)'
+      - "caddy.0_redir=/rqbit /rqbit/web/ permanent"
+      - "caddy.9_handle_path=/rqbit/*"
+      - "caddy.9_handle_path.0_forward_auth=127.0.0.1:9091"
+      - "caddy.9_handle_path.0_forward_auth.uri=/auth/api/authz/forward-auth"
+      - "caddy.9_handle_path.0_forward_auth.copy_headers=Remote-User Remote-Groups Remote-Name Remote-Email"
+      - 'caddy.9_handle_path.1_respond=@rqbit_other "rqbit is only available to administrators." 403'
+      - "caddy.9_handle_path.2_reverse_proxy={{upstreams 80}}"
+      - "caddy_1="
+      - "caddy_1.layer4.:${SERVER_PORT}.route.proxy={{upstreams ${SERVER_PORT}}}"
+      - "caddy_1.layer4.udp/:${SERVER_PORT}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
     volumes:
       - data:/data
       - rqbit_state:/state

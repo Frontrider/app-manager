@@ -190,6 +190,9 @@ class Home extends BaseController
                 }
                 $store->install($app, $environment);
                 $message = $app['name'] . ' started.';
+            } elseif ($action === 'refresh') {
+                $store->refresh($app);
+                $message = $app['name'] . ' refreshed.';
             } else {
                 $store->uninstall($app);
                 $message = $app['name'] . ' stopped.';
@@ -210,5 +213,29 @@ class Home extends BaseController
         }
 
         return redirect()->to($destination)->withCookies();
+    }
+
+    public function refresh(string $id)
+    {
+        return $this->runAction($id, 'refresh');
+    }
+
+    public function stopAll()
+    {
+        $session = session();
+        $session->close();
+        try {
+            (new ApplicationModel())->stopAll();
+            $level = 'success';
+            $message = 'All catalog apps stopped. Containers and data were preserved.';
+        } catch (RuntimeException $exception) {
+            $level = 'error';
+            $message = $exception->getMessage();
+        }
+        $session->start();
+        $session->setFlashdata($level, $message);
+        $session->close();
+
+        return redirect()->to(site_url('/'))->withCookies();
     }
 }

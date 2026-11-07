@@ -66,6 +66,7 @@ class ApplicationModel
                     'project' => 'localhost-' . trim(preg_replace('/[^a-z0-9_-]+/', '-', strtolower($name)), '-'),
                     'website' => $metadata['website'],
                     'caddyPath' => $metadata['caddyPath'],
+                    'description' => $this->description(dirname($path)),
                 ];
             }
         }
@@ -99,6 +100,25 @@ class ApplicationModel
         }
 
         return false;
+    }
+
+    private function description(string $directory): ?string
+    {
+        $file = $directory . '/readme.md';
+        if (! file_exists($file) && ! is_link($file)) {
+            return null;
+        }
+        $path = realpath($file);
+        if ($path === false || ! $this->isCatalogPath($path)
+            || ! is_file($path) || ! is_readable($path)) {
+            throw new RuntimeException('The app readme.md must be a readable file within the catalog.');
+        }
+        $description = file_get_contents($path);
+        if ($description === false) {
+            throw new RuntimeException('Could not read the app description.');
+        }
+
+        return trim($description);
     }
 
     /**
@@ -267,10 +287,20 @@ class ApplicationModel
      */
     public function install(array $app, ?array $environment = null): void
     {
-        $this->withLock(function () use ($app, $environment): void {
+        $this->start($app, $environment, false);
+    }
+
+    public function refresh(array $app): void
+    {
+        $this->start($app, null, true);
+    }
+
+    private function start(array $app, ?array $environment, bool $refresh): void
+    {
+        $this->withLock(function () use ($app, $environment, $refresh): void {
             $apps = $this->catalog();
             $running = $this->runningApps($apps);
-            if ($running[$app['id']]) {
+            if (! $refresh && $running[$app['id']]) {
                 throw new RuntimeException($app['name'] . ' is already running and cannot be deployed again.');
             }
 
@@ -286,7 +316,13 @@ class ApplicationModel
                 if ($environment !== null) {
                     $this->saveEnvironment($app, $environment);
                 }
-                $this->compose($app, 'up', '-d');
+                if ($refresh) {
+                    $this->compose($app, 'pull', '--ignore-buildable');
+                    $this->compose($app, 'build', '--pull', '--no-cache');
+                    $this->compose($app, 'up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans');
+                } else {
+                    $this->compose($app, 'up', '-d');
+                }
             } catch (RuntimeException $exception) {
                 try {
                     $this->saveStartupFailure($app, $exception->getMessage());
@@ -313,6 +349,30 @@ class ApplicationModel
     public function uninstall(array $app): void
     {
         $this->withLock(fn () => $this->compose($app, 'stop'));
+    }
+
+    public function stopAll(): void
+    {
+        $this->withLock(function (): void {
+            $failures = [];
+            foreach ($this->catalog() as $app) {
+                try {
+                    $output = $this->run([
+                        $this->dockerBinary, 'ps', '--all', '--quiet', '--filter',
+                        'label=com.docker.compose.project=' . $app['project'],
+                    ]);
+                    $ids = array_values(array_filter(array_map('trim', explode("\n", $output))));
+                    if ($ids !== []) {
+                        $this->run(array_merge([$this->dockerBinary, 'stop'], $ids));
+                    }
+                } catch (RuntimeException $exception) {
+                    $failures[] = $app['name'] . ': ' . $exception->getMessage();
+                }
+            }
+            if ($failures !== []) {
+                throw new RuntimeException("Some apps could not be stopped:\n" . implode("\n", $failures));
+            }
+        });
     }
 
     public function logs(array $app): string

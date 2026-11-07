@@ -12,7 +12,7 @@ class Sidebar extends BaseController
         $store = new ApplicationModel();
         $apps = $store->catalog();
         $running = $store->runningApps($apps);
-        $links = [];
+        $links = [['name' => 'Documentation', 'href' => '/docs/']];
 
         foreach ($apps as $app) {
             if ($running[$app['id']] && $app['caddyPath'] !== null) {

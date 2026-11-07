@@ -15,6 +15,21 @@ services:
       - data:/data
       - komga_config:/config
 
+  komga-oidc-setup:
+    build:
+      context: .
+    image: localhost-komga-setup:latest
+    restart: "no"
+    user: "0:0"
+    command: ["python", "/oidc-setup.py"]
+    depends_on:
+      komga-init:
+        condition: service_completed_successfully
+    network_mode: none
+    volumes:
+      - komga_config:/config
+      - global-env:/var/environment/global-env
+
   komga:
     image: gotson/komga:latest
     restart: always
@@ -22,21 +37,24 @@ services:
     depends_on:
       komga-init:
         condition: service_completed_successfully
+      komga-oidc-setup:
+        condition: service_completed_successfully
     environment:
       KOMGA_LIBRARIES_SCAN_STARTUP: "true"
       SERVER_SERVLET_CONTEXT_PATH: /books
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+      SPRING_PROFILES_ACTIVE: localhost
+      KOMGA_OAUTH2_ACCOUNT_CREATION: "true"
     networks:
       - internal
     labels:
       caddy: ':90'
       caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      # Only the internal setup service may claim the bootstrap administrator.
+      caddy.@komga_claim.path: '/books/api/v1/claim'
       caddy.6_redir: '/books /books/ permanent'
       caddy.6_handle: '/books/*'
-      caddy.6_handle.0_forward_auth: '127.0.0.1:9091'
-      caddy.6_handle.0_forward_auth.uri: '/auth/api/authz/forward-auth'
-      caddy.6_handle.0_forward_auth.copy_headers: 'Remote-User Remote-Groups Remote-Name Remote-Email'
-      caddy.6_handle.1_header: '@komga_other Content-Type "text/html; charset=utf-8"'
-      caddy.6_handle.2_respond: '@komga_other "<html><body><h1>Unauthorized</h1><p>Komga is only available to the admin user.</p>{file./etc/caddy/menu.html}</body></html>" 403'
+      caddy.6_handle.0_respond: '@komga_claim Forbidden 403'
       caddy.6_handle.3_reverse_proxy: '{{upstreams 25600}}'
       caddy.6_handle.3_reverse_proxy.header_up: 'Accept-Encoding identity'
     volumes:
@@ -51,8 +69,9 @@ services:
   komga-library-setup:
     build:
       context: .
-    restart: "no"
-    user: "1000:1000"
+    image: localhost-komga-setup:latest
+    restart: on-failure
+    user: "0:0"
     depends_on:
       komga:
         condition: service_started
@@ -61,8 +80,12 @@ services:
     environment:
       # Optional override for installations not bootstrapped by this app.
       KOMGA_API_KEY: "${KOMGA_API_KEY:-}"
+      LDAP_URI: "${LDAP_URI:-ldap://core:3890}"
+      LDAP_USER_BASE_DN: "${LDAP_USER_BASE_DN:-ou=people,dc=example,dc=com}"
+      LDAP_GROUP_BASE_DN: "${LDAP_GROUP_BASE_DN:-ou=groups,dc=example,dc=com}"
     volumes:
       - komga_config:/config
+      - global-env:/var/environment/global-env:ro
 
 volumes:
   data:
@@ -70,6 +93,9 @@ volumes:
     name: "${DATA_VOLUME:-localhost_data}"
   komga_config:
     driver: local
+  global-env:
+    external: true
+    name: "${GLOBAL_ENV_VOLUME:-localhost_global_env}"
 
 networks:
   internal:

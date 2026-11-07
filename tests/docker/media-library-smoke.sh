@@ -32,7 +32,8 @@ docker run -d --name "$prefix-jellyfin" --network "$prefix" --network-alias jell
     --mount "type=volume,source=$prefix-videos,target=/data/videos,volume-subpath=videos,readonly" \
     jellyfin/jellyfin:latest >/dev/null
 for attempt in 1 2; do
-    docker run --rm --network "$prefix" -v "$prefix-komga:/config" "$prefix-komga-setup"
+    docker run --rm --network "$prefix" -v "$prefix-komga:/config" "$prefix-komga-setup" \
+        python /library-setup.py --library-only
     docker run --rm --network "$prefix" -v "$prefix-jellyfin:/config" "$prefix-jellyfin-setup"
 done
 docker run --rm --network "$prefix" -v "$prefix-komga:/config" "$prefix-komga-setup" \

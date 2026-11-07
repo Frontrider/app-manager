@@ -37,6 +37,20 @@ request() {
 request /login | grep -q 'Sign in with LDAP'
 request / | grep -qi 'Location: http://localhost:90/login'
 request /sidebar | grep -q '^\[.*\]'
+docker exec "$container" sh -ec '
+    busybox wget -q -O - http://127.0.0.1:8080/docs/ | grep -qi "Localhost"
+    busybox wget -q -O - http://127.0.0.1:8080/docs/obs-bridge/ | grep -qi "OBS bridge"
+    for file in /srv/documentation/docs/assets/css/*.css; do
+        busybox wget -S -O /dev/null "http://127.0.0.1:8080/docs/assets/css/$(basename "$file")" 2>&1 \
+            | grep -qi "Content-Type: text/css"
+    done
+    for file in /srv/documentation/docs/assets/js/*.js; do
+        busybox wget -q -O /dev/null "http://127.0.0.1:8080/docs/assets/js/$(basename "$file")"
+    done
+    busybox wget -S -O /dev/null http://127.0.0.1:8080/docs/obs-bridge 2>&1 | grep -qi "Location: /docs/obs-bridge/"
+    busybox wget -S -O /dev/null http://127.0.0.1:8080/docs/missing-page/ 2>&1 | grep -q "404"
+    busybox wget -S -O /dev/null http://127.0.0.1:8080/app/Config/Routes.php 2>&1 | grep -q "404"
+'
 docker exec --user www-data "$container" docker ps --quiet >/dev/null
 docker exec --user www-data "$container" sh -ec '
     [ "$(id -u)" = 1000 ]

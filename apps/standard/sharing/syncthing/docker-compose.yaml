@@ -28,8 +28,10 @@ services:
     labels:
       caddy: ':90'
       caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
-      caddy_1: "'': 'syncthing:22000'"
-      'caddy_1.layer4.udp/:22000.route.proxy': 'udp/syncthing:22000'
+      caddy.@syncthing_other.not.header_regexp: "Remote-Groups (^|,)lldap_admin(,|$$)"
+      caddy_1: ''
+      'caddy_1.layer4.:22000.route.proxy': '{{upstreams 22000}}'
+      'caddy_1.layer4.udp/:22000.route.proxy': 'udp/{{upstreams 22000}}'
       caddy.0_redir: '/syncthing /syncthing/ permanent'
       caddy.2_handle_path: '/syncthing/*'
       caddy.2_handle_path.0_forward_auth: '127.0.0.1:9091'
