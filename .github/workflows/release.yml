@@ -57,13 +57,19 @@ jobs:
             echo "Use a semantic version such as 1.2.3 or 1.2.3-rc.1. Build metadata is not supported in Docker tags." >&2
             exit 1
           fi
-          if [ "${#version}" -gt 128 ]; then
-            echo "Docker image tags cannot exceed 128 characters." >&2
+          if [ "${#version}" -gt 122 ]; then
+            echo "Version cannot exceed 122 characters so architecture tags fit Docker's 128-character limit." >&2
             exit 1
           fi
-          docker buildx build --pull --platform linux/amd64,linux/arm64 \
-            --file Dockerfile --tag "$image:$version" --push .
-          printf 'name=%s\nversion=%s\ntag=%s\n' "$image:$version" "$version" "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          for architecture in amd64 arm64; do
+            docker buildx build --pull --platform "linux/$architecture" \
+              --file Dockerfile --tag "$image:$version-$architecture" --push .
+          done
+          docker buildx imagetools create --tag "$image:$version" \
+            "$image:$version-amd64" "$image:$version-arm64"
+          printf 'name=%s\namd64=%s\narm64=%s\nversion=%s\ntag=%s\n' \
+            "$image:$version" "$image:$version-amd64" "$image:$version-arm64" \
+            "$version" "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Create or update GitHub release
         env:
@@ -71,28 +77,36 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.image.outputs.tag }}
           IMAGE: ${{ steps.image.outputs.name }}
+          AMD64_IMAGE: ${{ steps.image.outputs.amd64 }}
+          ARM64_IMAGE: ${{ steps.image.outputs.arm64 }}
           VERSION: ${{ steps.image.outputs.version }}
           COMMIT: ${{ github.sha }}
         run: |
-          notes="Docker image: \`$IMAGE\`
+          notes="## Docker images
 
-          Supported platforms: \`linux/amd64\`, \`linux/arm64\`.
+          | Platform | Image |
+          | --- | --- |
+          | Automatic (AMD64 / ARM64) | \`$IMAGE\` |
+          | AMD64 | \`$AMD64_IMAGE\` |
+          | ARM64 | \`$ARM64_IMAGE\` |
 
           Pull with:
           \`\`\`sh
           docker pull $IMAGE
+          docker pull $AMD64_IMAGE
+          docker pull $ARM64_IMAGE
           \`\`\`"
           existing="$(gh api --paginate "repos/$GH_REPO/releases" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .tag_name")"
           if [ -n "$existing" ]; then
             body="$(gh release view "$RELEASE_TAG" --json body --jq '.body')"
-            if [[ "$body" != *"Docker image: \`$IMAGE\`"* ]]; then
+            if [[ "$body" != *"$notes"* ]]; then
               gh release edit "$RELEASE_TAG" --notes "${body}${body:+$'\n\n'}$notes"
             fi
           else
-            arguments=(--target "$COMMIT" --title "$RELEASE_TAG" --notes "$notes")
+            arguments=(--target "$COMMIT" --title "$RELEASE_TAG" --generate-notes --notes "$notes")
             if [[ "$VERSION" == *-* ]]; then
               arguments+=(--prerelease)
             fi
             gh release create "$RELEASE_TAG" "${arguments[@]}"
           fi
-          printf 'Published Docker image: `%s` (linux/amd64, linux/arm64)\n' "$IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$notes" >> "$GITHUB_STEP_SUMMARY"
