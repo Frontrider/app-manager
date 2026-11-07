@@ -1,5 +1,17 @@
 services:
+  data-init:
+    image: alpine:3.22
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    command: ["sh", "-ec", "mkdir -p /data/games/minecraft; chown 1000:1000 /data/games/minecraft"]
+    volumes:
+      - data:/data
+
   minecraft:
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     image: itzg/minecraft-server:latest
     restart: unless-stopped
     env_file: env
@@ -21,10 +33,18 @@ services:
       - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
       - "caddy.layer4.:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy={{upstreams ${SERVER_PORT}}}"
     volumes:
-      - minecraft_data:/data
+      - data:/Data
+      - type: volume
+        source: data
+        target: /data
+        volume:
+          subpath: games/minecraft
+          nocopy: true
 
 volumes:
-  minecraft_data:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
 
 networks:
   internal:

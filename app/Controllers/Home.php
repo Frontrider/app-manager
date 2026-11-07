@@ -135,11 +135,27 @@ class Home extends BaseController
             ->setHeader('Cache-Control', 'no-store')
             ->setHeader('X-Content-Type-Options', 'nosniff');
         try {
-            return $this->response->setBody($store->logs($app));
+            return $this->response->setBody($this->plainTextLogs($store->logs($app)));
         } catch (RuntimeException $exception) {
             log_message('error', 'Could not read app logs: {message}', ['message' => $exception->getMessage()]);
-            return $this->response->setStatusCode(500)->setBody('Could not read logs: ' . $exception->getMessage());
+            return $this->response->setStatusCode(500)
+                ->setBody($this->plainTextLogs('Could not read logs: ' . $exception->getMessage()));
         }
+    }
+
+    private function plainTextLogs(string $logs): string
+    {
+        // Remove terminal strings, CSI commands, and two-byte escape commands, not Unicode bytes.
+        $logs = preg_replace(
+            '/\x1B(?:\][^\x07\x1B]*(?:\x07|\x1B\\\\)|[PX^_][\s\S]*?\x1B\\\\|\[[0-?]*[ -\/]*[@-~]|[ -\/]*[0-~])/',
+            '',
+            $logs,
+        );
+        if ($logs === null) {
+            throw new RuntimeException('Could not normalize terminal log output.');
+        }
+
+        return str_replace(["\r\n", "\r"], "\n", $logs);
     }
 
     public function logo(string $id): ResponseInterface

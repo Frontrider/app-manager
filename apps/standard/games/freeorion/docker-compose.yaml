@@ -1,5 +1,17 @@
 services:
+  data-init:
+    image: alpine:3.22
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    command: ["sh", "-ec", "mkdir -p /data/games/freeorion; chown 1000:1000 /data/games/freeorion"]
+    volumes:
+      - data:/data
+
   freeorion:
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     build:
       context: .
     image: localhost-freeorion:latest
@@ -14,10 +26,18 @@ services:
       - "caddy.layer4.:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy={{upstreams 12346}}"
       - "caddy.layer4.udp/:${DISCOVERY_PORT:?Set DISCOVERY_PORT in env}.route.proxy=udp/{{upstreams 12345}}"
     volumes:
-      - freeorion_data:/data
+      - data:/Data
+      - type: volume
+        source: data
+        target: /data
+        volume:
+          subpath: games/freeorion
+          nocopy: true
 
 volumes:
-  freeorion_data:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
 
 networks:
   internal:

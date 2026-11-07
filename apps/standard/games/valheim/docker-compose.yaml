@@ -1,5 +1,17 @@
 services:
+  data-init:
+    image: alpine:3.22
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    command: ["sh", "-ec", "mkdir -p /data/games/valheim/config /data/games/valheim/server; chown 1000:1000 /data/games/valheim /data/games/valheim/config /data/games/valheim/server"]
+    volumes:
+      - data:/data
+
   valheim:
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     image: ghcr.io/community-valheim-tools/valheim-server:latest
     restart: unless-stopped
     env_file: env
@@ -21,12 +33,24 @@ services:
       - "caddy.layer4.udp/:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
       - "caddy.layer4.udp/:${QUERY_PORT:?Set QUERY_PORT in env}.route.proxy=udp/{{upstreams ${QUERY_PORT}}}"
     volumes:
-      - valheim_config:/config
-      - valheim_server:/opt/valheim
+      - data:/Data
+      - type: volume
+        source: data
+        target: /config
+        volume:
+          subpath: games/valheim/config
+          nocopy: true
+      - type: volume
+        source: data
+        target: /opt/valheim
+        volume:
+          subpath: games/valheim/server
+          nocopy: true
 
 volumes:
-  valheim_config:
-  valheim_server:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
 
 networks:
   internal:

@@ -1,9 +1,23 @@
 services:
+  data-init:
+    image: alpine:3.22
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    command: ["sh", "-ec", "mkdir -p /data/games/hytale; chown 1000:1000 /data/games/hytale"]
+    volumes:
+      - data:/data
+
   hytale:
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     image: deinfreu/hytale-server:latest
     restart: unless-stopped
     env_file: env
     environment:
+      UID: "1000"
+      GID: "1000"
       SERVER_IP: "${SERVER_IP:-0.0.0.0}"
       SERVER_PORT: "${SERVER_PORT:?Set SERVER_PORT in env}"
       JAVA_ARGS: "${JAVA_ARGS:--Xms1G -Xmx4G}"
@@ -17,7 +31,13 @@ services:
       - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
       - "caddy.layer4.udp/:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
     volumes:
-      - hytale_data:/home/container
+      - data:/Data
+      - type: volume
+        source: data
+        target: /home/container
+        volume:
+          subpath: games/hytale
+          nocopy: true
       - type: bind
         source: /etc/machine-id
         target: /etc/machine-id
@@ -26,7 +46,9 @@ services:
           create_host_path: false
 
 volumes:
-  hytale_data:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
 
 networks:
   internal:

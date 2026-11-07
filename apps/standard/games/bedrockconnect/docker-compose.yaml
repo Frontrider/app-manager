@@ -1,5 +1,17 @@
 services:
+  data-init:
+    image: alpine:3.22
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    command: ["sh", "-ec", "mkdir -p /data/games/bedrockconnect; chown 1000:1000 /data/games/bedrockconnect"]
+    volumes:
+      - data:/data
+
   bedrockconnect:
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     build:
       context: .
     image: localhost-bedrockconnect:latest
@@ -13,10 +25,18 @@ services:
       - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
       - "caddy.layer4.udp/:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy=udp/{{upstreams 19132}}"
     volumes:
-      - bedrockconnect_data:/data
+      - data:/Data
+      - type: volume
+        source: data
+        target: /data
+        volume:
+          subpath: games/bedrockconnect
+          nocopy: true
 
 volumes:
-  bedrockconnect_data:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
 
 networks:
   internal:

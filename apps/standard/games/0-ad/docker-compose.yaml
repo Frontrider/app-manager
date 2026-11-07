@@ -1,5 +1,17 @@
 services:
+  data-init:
+    image: alpine:3.22
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    command: ["sh", "-ec", "mkdir -p /data/games/0-ad; chown 1000:1000 /data/games/0-ad"]
+    volumes:
+      - data:/data
+
   0-ad:
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     build:
       context: .
     image: localhost-0-ad:latest
@@ -14,10 +26,18 @@ services:
       - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
       - "caddy.layer4.udp/:${SERVER_PORT}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
     volumes:
-      - zero_ad_data:/data
+      - data:/Data
+      - type: volume
+        source: data
+        target: /data
+        volume:
+          subpath: games/0-ad
+          nocopy: true
 
 volumes:
-  zero_ad_data:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
 
 networks:
   internal:

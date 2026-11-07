@@ -22,11 +22,14 @@ inside the categories, we have the applications.
 Each of them are a docker compose configuration, using caddy's labels to manage external access.
 
 More information can be found here:
+
 https://docs.docker.com/compose/
+
 Caddy labels:
+
 https://github.com/lucaslorentz/caddy-docker-proxy
 
-#### Data volume
+### Data volume
 The main thing to watch out for, is that if the user needs to see your files, then it must be on the `localhost_data` volume.
 This is mounted to `/data` in the file browser container.
 The user accessing it is set to 1000:1000, that is what you need to use if you interact with it.
@@ -34,8 +37,9 @@ The user accessing it is set to 1000:1000, that is what you need to use if you i
 ONLY use this for files that the user needs to see, otherwise use a different volume for your data, to make it easier to manage it and avoid accidental deletion.
 
 
-#### Authorization
+### Authorization
 ##### LDAP
+
 The main way to authorize users is through the LLDAP service.
 Prefer to use the currently logged in user, but there is a service user that can also be used if absolutely necessary.
 The password is in the `localhost_global_env` volume, in the `lldap_service_password` file. The name is `service`.

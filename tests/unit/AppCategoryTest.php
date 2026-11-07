@@ -296,6 +296,19 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->assertStringContainsString('server warning', $result->response()->getBody());
     }
 
+    public function testLogDisplayRemovesTerminalCommandsAndPreservesUnicode(): void
+    {
+        $method = new ReflectionMethod(\App\Controllers\Home::class, 'plainTextLogs');
+        $input = "timestamp \x1b[?2027\$p\x1b[?1h\x1b=\x1b[?2004h"
+            . "\x1b[K\x1b[1m\x1b[94m[I]\x1b[0m café \u{F7EF} <script>\r\n"
+            . "\x1b]0;window title\x07next\x1b]8;;https://example.com\x1b\\"
+            . "link\x1b]8;;\x1b\\\rfinished";
+        $this->assertSame(
+            "timestamp [I] café \u{F7EF} <script>\nnextlink\nfinished",
+            $method->invoke(new \App\Controllers\Home(), $input),
+        );
+    }
+
     public function testNonAdminsCannotReadLogsOrSeeLogLinks(): void
     {
         $this->withSession(['ldap_user' => [
