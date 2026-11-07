@@ -53,7 +53,7 @@ class Home extends BaseController
                 $query === '' || mb_stripos($app['name'] . ' ' . $store->category($app), $query) !== false));
         }
 
-        return $this->response->setHeader('Cache-Control', 'no-store')->setBody(view('welcome_message', [
+        return $this->response->setHeader('Cache-Control', 'no-store')->setBody(view('browser', [
             'apps'    => $apps,
             'running' => $running,
             'categories' => $categories,
@@ -95,25 +95,6 @@ class Home extends BaseController
         $session->close();
 
         return redirect()->to(site_url('/'))->withCookies();
-    }
-
-    public function sidebar(): ResponseInterface
-    {
-        $store = new AppStore();
-        $apps = $store->catalog();
-        $running = $store->runningApps($apps);
-        $links = [];
-
-        foreach ($apps as $app) {
-            if ($running[$app['id']] && $app['caddyPath'] !== null) {
-                $links[] = ['name' => $app['name'], 'href' => $app['caddyPath']];
-            }
-        }
-
-        return $this->response
-            ->setHeader('Cache-Control', 'no-store')
-            ->setHeader('X-Content-Type-Options', 'nosniff')
-            ->setJSON($links);
     }
 
     public function uninstall(string $id)

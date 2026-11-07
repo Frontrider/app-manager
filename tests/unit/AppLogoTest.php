@@ -75,7 +75,7 @@ final class AppLogoTest extends CIUnitTestCase
 
     public function testCatalogUsesConsistentLightThemeAndLogo(): void
     {
-        $html = view('welcome_message', [
+        $html = view('browser', [
             'apps'    => [$this->catalogApp],
             'running' => [$this->catalogApp['id'] => false],
             'categories' => ['General' => [$this->catalogApp]],

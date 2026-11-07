@@ -3,7 +3,7 @@
 use CodeIgniter\Router\RouteCollection;
 
 /** @var RouteCollection $routes */
-$routes->get('sidebar', 'Home::sidebar');
+$routes->get('sidebar', 'Sidebar::index');
 $routes->get('login', 'Auth::login');
 $routes->post('login', 'Auth::authenticate');
 $routes->get('/', 'Home::index', ['filter' => 'ldapSession']);
