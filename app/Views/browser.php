@@ -40,7 +40,7 @@
             <form action="<?= esc(site_url('catalog/upload'), 'attr') ?>" method="post" enctype="multipart/form-data" class="mb-5">
                 <?= csrf_field() ?>
                 <label class="label" for="catalog-zip">Upload catalog ZIP</label>
-                <p class="help mb-2">Maximum ZIP size: 50 MiB. Use the same folder structure as /apps, including standard/category/app or singleton/category/app. Existing items cannot be replaced. Only upload trusted files: starting an app grants it access to Docker.</p>
+                <p class="help mb-2">Maximum ZIP size: 50 MiB. Upload a custom catalog to start up applications from.</p>
                 <div class="field is-grouped">
                     <div class="control">
                         <div class="file">
