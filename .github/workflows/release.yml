@@ -12,7 +12,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -30,6 +30,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish application image
+        id: image
         env:
           REPOSITORY: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -46,3 +47,25 @@ jobs:
           fi
           docker build --pull --file Dockerfile --tag "$image:$version" .
           docker push "$image:$version"
+          printf 'name=%s\nversion=%s\ntag=%s\n' "$image:$version" "$version" "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.image.outputs.tag }}
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.image.outputs.version }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          arguments=(--target "$COMMIT" --title "$RELEASE_TAG" --notes "Docker image: \`$IMAGE\`
+
+          Pull with:
+          \`\`\`sh
+          docker pull $IMAGE
+          \`\`\`")
+          if [[ "$VERSION" == *-* ]]; then
+            arguments+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" "${arguments[@]}"
+          printf 'Published Docker image: `%s`\n' "$IMAGE" >> "$GITHUB_STEP_SUMMARY"
