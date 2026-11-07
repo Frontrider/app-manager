@@ -41,6 +41,17 @@ class Home extends BaseController
             && (! is_string($selectedCategory) || ! array_key_exists($selectedCategory, $categories))) {
             throw PageNotFoundException::forPageNotFound('That category is not available.');
         }
+        $query = $this->request->getPost('search');
+        if ($query !== null && (! is_string($query) || strlen($query) > 200)) {
+            throw PageNotFoundException::forPageNotFound('Invalid catalog search.');
+        }
+        $query = trim($query ?? '');
+        $displayApps = $categories[$selectedCategory] ?? [];
+        if ($this->request->getMethod() === 'POST') {
+            $selectedCategory = null;
+            $displayApps = array_values(array_filter($apps, fn (array $app): bool =>
+                $query === '' || mb_stripos($app['name'] . ' ' . $store->category($app), $query) !== false));
+        }
 
         return $this->response->setHeader('Cache-Control', 'no-store')->setBody(view('welcome_message', [
             'apps'    => $apps,
@@ -50,12 +61,40 @@ class Home extends BaseController
             'installationBlocks' => $store->installationBlocks($apps, $running),
             'canManage' => $canManage,
             'environments' => $environments,
+            'searchQuery' => $query,
+            'displayApps' => $displayApps,
         ]));
     }
 
     public function install(string $id)
     {
         return $this->runAction($id, 'install');
+    }
+
+    public function uploadCatalog()
+    {
+        $session = session();
+        $session->close();
+        try {
+            $upload = $this->request->getFile('catalog');
+            if ($upload === null || ! $upload->isValid()) {
+                throw new RuntimeException($upload === null ? 'Select a catalog ZIP file.' : $upload->getErrorString());
+            }
+            if (strtolower($upload->getClientExtension()) !== 'zip') {
+                throw new RuntimeException('Upload a ZIP archive.');
+            }
+            $count = (new AppStore())->importCatalog($upload->getTempName());
+            $level = 'success';
+            $message = $count . ' catalog item(s) added.';
+        } catch (RuntimeException $exception) {
+            $level = 'error';
+            $message = $exception->getMessage();
+        }
+        $session->start();
+        $session->setFlashdata($level, $message);
+        $session->close();
+
+        return redirect()->to(site_url('/'))->withCookies();
     }
 
     public function sidebar(): ResponseInterface
@@ -80,6 +119,46 @@ class Home extends BaseController
     public function uninstall(string $id)
     {
         return $this->runAction($id, 'uninstall');
+    }
+
+    public function logs(string $id): ResponseInterface
+    {
+        $store = new AppStore();
+        try {
+            $app = $store->find($id);
+        } catch (RuntimeException $exception) {
+            throw PageNotFoundException::forPageNotFound($exception->getMessage());
+        }
+
+        return $this->response
+            ->setHeader('Cache-Control', 'no-store')
+            ->setHeader('X-Content-Type-Options', 'nosniff')
+            ->setBody(view('app_logs', [
+                'app' => $app,
+                'category' => $store->category($app),
+            ]));
+    }
+
+    public function logOutput(string $id): ResponseInterface
+    {
+        session()->close();
+        $store = new AppStore();
+        try {
+            $app = $store->find($id);
+        } catch (RuntimeException $exception) {
+            throw PageNotFoundException::forPageNotFound($exception->getMessage());
+        }
+
+        $this->response
+            ->setContentType('text/plain', 'UTF-8')
+            ->setHeader('Cache-Control', 'no-store')
+            ->setHeader('X-Content-Type-Options', 'nosniff');
+        try {
+            return $this->response->setBody($store->logs($app));
+        } catch (RuntimeException $exception) {
+            log_message('error', 'Could not read app logs: {message}', ['message' => $exception->getMessage()]);
+            return $this->response->setStatusCode(500)->setBody('Could not read logs: ' . $exception->getMessage());
+        }
     }
 
     public function logo(string $id): ResponseInterface

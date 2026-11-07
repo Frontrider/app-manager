@@ -4,6 +4,12 @@ services:
     restart: unless-stopped
     env_file: env
     environment:
+      EULA: "${EULA:-FALSE}"
+      TYPE: "${TYPE:-VANILLA}"
+      VERSION: "${VERSION:-LATEST}"
+      MEMORY: "${MEMORY:-2G}"
+      MOTD: "${MOTD:-Local Host Minecraft}"
+      SERVER_PORT: "${SERVER_PORT:?Set SERVER_PORT in env}"
       UID: "1000"
       GID: "1000"
     stdin_open: true

@@ -1,4 +1,58 @@
 <script>
+    document.querySelectorAll('[data-app-logs]').forEach((panel) => {
+        const output = panel.querySelector('[data-log-output]');
+        const errorMessage = panel.querySelector('[data-log-error]');
+        let timer;
+        let request;
+        const stop = () => {
+            clearTimeout(timer);
+            request?.abort();
+            request = null;
+        };
+        const refresh = async () => {
+            const currentRequest = new AbortController();
+            request = currentRequest;
+            try {
+                const response = await fetch(panel.dataset.appLogs, {
+                    signal: currentRequest.signal,
+                    cache: 'no-store',
+                    headers: { Accept: 'text/plain' },
+                });
+                if (response.redirected) {
+                    throw new Error('Your session has expired. Reload the page to sign in.');
+                }
+                const isText = response.headers.get('Content-Type')?.startsWith('text/plain');
+                if (!response.ok || !isText) {
+                    throw new Error(isText ? await response.text() : `Could not read logs (HTTP ${response.status}).`);
+                }
+                const logs = await response.text();
+                if (request !== currentRequest) {
+                    return;
+                }
+                const atBottom = output.scrollTop + output.clientHeight >= output.scrollHeight - 10;
+                output.textContent = logs;
+                if (atBottom) {
+                    output.scrollTop = output.scrollHeight;
+                }
+                errorMessage.textContent = '';
+            } catch (error) {
+                if (request === currentRequest && error.name !== 'AbortError') {
+                    errorMessage.textContent = error.message;
+                }
+            } finally {
+                if (request === currentRequest) {
+                    request = null;
+                    timer = setTimeout(refresh, 3000);
+                }
+            }
+        };
+        window.addEventListener('pagehide', stop);
+        window.addEventListener('pageshow', () => {
+            stop();
+            refresh();
+        });
+    });
+
     const appActionForms = document.querySelectorAll('form[data-pending-label]');
     appActionForms.forEach((form) => {
         const configureButton = form.querySelector('[data-configure-app]');

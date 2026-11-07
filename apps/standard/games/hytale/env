@@ -1,9 +1,4 @@
 # Requires a purchased Hytale license.
-SERVER_IP=0.0.0.0
 SERVER_PORT=5520
 AUTH_MODE=authenticated
-# Session Service API token supplied to the server as --session-token.
-SESSION_TOKEN=
-# Identity token supplied to the server as --identity-token.
-IDENTITY_TOKEN=
 JAVA_ARGS=-Xms1G -Xmx4G

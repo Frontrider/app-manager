@@ -5,8 +5,8 @@ FROM php:8.4-fpm-bookworm AS php-base
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates libfcgi-bin libicu-dev libldap2-dev libonig-dev unzip \
-    && docker-php-ext-install -j"$(nproc)" intl ldap mbstring opcache \
+        ca-certificates libfcgi-bin libicu-dev libldap2-dev libonig-dev libzip-dev unzip \
+    && docker-php-ext-install -j"$(nproc)" intl ldap mbstring opcache zip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html

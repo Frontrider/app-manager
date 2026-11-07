@@ -22,6 +22,9 @@
             <?php if (($blockedBy ?? null) !== null): ?>
                 <p class="help mt-3">Stop <?= esc($blockedBy) ?> to use another app in this category.</p>
             <?php endif ?>
+            <?php if ($canManage ?? false): ?>
+                <a class="button is-text mt-3" href="<?= esc(site_url('apps/' . $app['id'] . '/logs'), 'attr') ?>">View logs</a>
+            <?php endif ?>
         </div>
         <?php if ($canManage ?? false): ?>
         <footer class="card-footer p-4">

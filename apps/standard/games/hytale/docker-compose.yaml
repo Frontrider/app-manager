@@ -4,9 +4,10 @@ services:
     restart: unless-stopped
     env_file: env
     environment:
+      SERVER_IP: "${SERVER_IP:-0.0.0.0}"
+      SERVER_PORT: "${SERVER_PORT:?Set SERVER_PORT in env}"
+      JAVA_ARGS: "${JAVA_ARGS:--Xms1G -Xmx4G}"
       HYTALE_AUTH_MODE: "${AUTH_MODE:?Set AUTH_MODE in env}"
-      HYTALE_SESSION_TOKEN: "${SESSION_TOKEN:-}"
-      HYTALE_IDENTITY_TOKEN: "${IDENTITY_TOKEN:-}"
     stdin_open: true
     tty: true
     networks:

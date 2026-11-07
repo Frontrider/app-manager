@@ -43,6 +43,10 @@ final class AppCategoryTest extends CIUnitTestCase
             if (is_file($saved)) {
                 unlink($saved);
             }
+            $failure = WRITEPATH . 'app-startup-failures/' . $app['id'] . '.log';
+            if (is_file($failure)) {
+                unlink($failure);
+            }
         }
         foreach ($this->environment as $name => $value) {
             putenv($value === false ? $name : $name . '=' . $value);
@@ -70,6 +74,135 @@ final class AppCategoryTest extends CIUnitTestCase
             [$this->apps['Second']['id'] => 'First'],
             $this->store->installationBlocks($apps, $running),
         );
+    }
+
+    public function testProjectNamesAreHumanReadable(): void
+    {
+        $this->assertSame('appstore-first', $this->apps['First']['project']);
+        $this->assertSame('appstore-player', $this->apps['Player']['project']);
+    }
+
+    public function testLogsIncludeAllProjectContainersAndBothOutputStreams(): void
+    {
+        $app = $this->apps['First'];
+        putenv('CATEGORY_TEST_PROJECT=' . $app['project']);
+        $logs = $this->store->logs($app);
+        $this->assertStringContainsString('appstore-first-server-1', $logs);
+        $this->assertStringContainsString('appstore-first-init-1', $logs);
+        $this->assertStringContainsString('server ready', $logs);
+        $this->assertStringContainsString('server warning', $logs);
+        $calls = array_map(static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            file($this->directory . '/calls'));
+        $this->assertSame([
+            ['ps', '--all', '--filter', 'label=com.docker.compose.project=' . $app['project'],
+                '--format', '{{.ID}}\t{{.Names}}'],
+            ['logs', '--timestamps', '--tail', '100', 'category-container'],
+            ['logs', '--timestamps', '--tail', '100', 'category-init'],
+        ], $calls);
+    }
+
+    public function testLogsExplainWhenAppHasNoContainers(): void
+    {
+        $this->assertSame('No containers exist for this app yet.', $this->store->logs($this->apps['First']));
+    }
+
+    public function testStartupFailurePersistsWithoutContainersAndClearsAfterSuccess(): void
+    {
+        $app = $this->apps['First'];
+        putenv('CATEGORY_TEST_VERBOSE=1');
+        try {
+            $this->store->install($app);
+            $this->fail('Startup should fail.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('simulated failure', $exception->getMessage());
+        }
+        $logs = (new AppStore())->logs($app);
+        $this->assertStringContainsString('Startup failed at ', $logs);
+        $this->assertStringContainsString('simulated failure', $logs);
+        $this->assertStringContainsString('No containers exist for this app yet.', $logs);
+        $this->assertSame(0600, fileperms(WRITEPATH . 'app-startup-failures/' . $app['id'] . '.log') & 0777);
+        putenv('CATEGORY_TEST_VERBOSE');
+        $this->store->install($app);
+        $this->assertStringNotContainsString('Startup failed', $this->store->logs($app));
+    }
+
+    public function testStartupFailureRemainsVisibleWhenContainerLogsFail(): void
+    {
+        $app = $this->apps['First'];
+        putenv('CATEGORY_TEST_VERBOSE=1');
+        try {
+            $this->store->install($app);
+            $this->fail('Startup should fail.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('simulated failure', $exception->getMessage());
+        }
+        putenv('CATEGORY_TEST_PROJECT=' . $app['project']);
+        $logs = $this->store->logs($app);
+        $this->assertStringContainsString('Startup failed at ', $logs);
+        $this->assertStringContainsString('simulated failure', $logs);
+        $this->assertStringContainsString('Could not read container logs: simulated log failure', $logs);
+    }
+
+    public function testLogFailuresAreReported(): void
+    {
+        putenv('CATEGORY_TEST_PROJECT=' . $this->apps['First']['project']);
+        putenv('CATEGORY_TEST_VERBOSE=1');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('simulated log failure');
+        $this->store->logs($this->apps['First']);
+    }
+
+    public function testAdminsCanReadLogsAsUncachedPlainText(): void
+    {
+        putenv('CATEGORY_TEST_PROJECT=' . $this->apps['First']['project']);
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('apps/' . $this->apps['First']['id'] . '/logs/output');
+        $result->assertStatus(200);
+        $this->assertStringStartsWith('text/plain', $result->response()->getHeaderLine('Content-Type'));
+        $this->assertSame('no-store', $result->response()->getHeaderLine('Cache-Control'));
+        $this->assertStringContainsString('server warning', $result->response()->getBody());
+    }
+
+    public function testNonAdminsCannotReadLogsOrSeeLogLinks(): void
+    {
+        $this->withSession(['ldap_user' => [
+            'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]])->get('apps/' . $this->apps['First']['id'] . '/logs')->assertStatus(403);
+        $this->get('apps/' . $this->apps['First']['id'] . '/logs/output')->assertStatus(403);
+        $html = view('partials/app_card', [
+            'app' => $this->apps['First'], 'isRunning' => true, 'canManage' => false,
+        ]);
+        $this->assertStringNotContainsString('View logs', $html);
+        $html = view('partials/app_card', [
+            'app' => $this->apps['First'], 'isRunning' => false, 'canManage' => true,
+        ]);
+        $this->assertStringContainsString('View logs', $html);
+        $this->assertStringContainsString(site_url('apps/' . $this->apps['First']['id'] . '/logs'), $html);
+        $this->assertStringNotContainsString('data-app-logs', $html);
+    }
+
+    public function testAdminsSeeLogsOnSeparatePage(): void
+    {
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('apps/' . $this->apps['First']['id'] . '/logs');
+        $result->assertStatus(200);
+        $this->assertSame('no-store', $result->response()->getHeaderLine('Cache-Control'));
+        $this->assertStringContainsString('First logs', $result->response()->getBody());
+        $this->assertStringContainsString('data-app-logs', $result->response()->getBody());
+        $this->assertStringContainsString('Back to applications', $result->response()->getBody());
+    }
+
+    public function testLogEndpointReportsDockerErrors(): void
+    {
+        putenv('CATEGORY_TEST_PROJECT=' . $this->apps['First']['project']);
+        putenv('CATEGORY_TEST_VERBOSE=1');
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('apps/' . $this->apps['First']['id'] . '/logs/output');
+        $result->assertStatus(500);
+        $this->assertStringContainsString('simulated log failure', $result->response()->getBody());
     }
 
     public function testBundledFileBrowsersAreAlternativesToCopyparty(): void
@@ -159,7 +292,7 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->assertSame(0600, fileperms($saved) & 0777);
         $call = json_decode(file($this->directory . '/calls')[0], true, 512, JSON_THROW_ON_ERROR);
         $this->assertContains($saved, $call);
-        $this->assertSame(2, count(array_filter($call, static fn (string $arg): bool => $arg === '--file')));
+        $this->assertSame(1, count(array_filter($call, static fn (string $arg): bool => $arg === '--file')));
         $this->assertStringContainsString('SERVER_PORT=12345', file_get_contents(dirname($app['file']) . '/env'));
 
         $html = view('partials/app_card', [
@@ -320,5 +453,27 @@ final class AppCategoryTest extends CIUnitTestCase
         ]]);
         $this->expectException(\CodeIgniter\Exceptions\PageNotFoundException::class);
         $this->get('/category/missing');
+    }
+
+    public function testSearchFindsAppsAcrossCategories(): void
+    {
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]])->post('catalog/search', ['search' => 'player']);
+        $result->assertStatus(200);
+        $html = $result->response()->getBody();
+        $this->assertStringContainsString('Search results', $html);
+        $this->assertStringContainsString('Player logo', $html);
+        $this->assertStringNotContainsString('First logo', $html);
+        $this->assertStringNotContainsString('Upload catalog ZIP', $html);
+    }
+
+    public function testSearchWithoutMatchesShowsMessage(): void
+    {
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]])->post('catalog/search', ['search' => 'not-in-catalog']);
+        $result->assertStatus(200);
+        $this->assertStringContainsString('No applications match your search.', $result->response()->getBody());
     }
 }

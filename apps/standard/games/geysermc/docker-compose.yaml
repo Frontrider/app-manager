@@ -6,6 +6,11 @@ services:
     restart: unless-stopped
     user: "1000:1000"
     env_file: env
+    environment:
+      JAVA_SERVER_HOST: "${JAVA_SERVER_HOST:?Set JAVA_SERVER_HOST in env}"
+      JAVA_SERVER_PORT: "${JAVA_SERVER_PORT:?Set JAVA_SERVER_PORT in env}"
+      AUTH_TYPE: "${AUTH_TYPE:?Set AUTH_TYPE in env}"
+      SERVER_PORT: "${SERVER_PORT:?Set SERVER_PORT in env}"
     networks:
       - internal
     labels:

@@ -24,6 +24,37 @@
             </div>
         </div>
 
+        <form action="<?= esc(site_url('catalog/search'), 'attr') ?>" method="post" class="mb-5">
+            <?= csrf_field() ?>
+            <label class="label" for="catalog-search">Search applications</label>
+            <div class="field has-addons">
+                <div class="control is-expanded">
+                    <input class="input" id="catalog-search" name="search" type="search"
+                           value="<?= esc($searchQuery ?? '', 'attr') ?>" maxlength="200"
+                           placeholder="Search all applications by name or category" autocomplete="off">
+                </div>
+                <div class="control"><button class="button is-link" type="submit">Search</button></div>
+            </div>
+        </form>
+        <?php if ($canManage ?? false): ?>
+            <form action="<?= esc(site_url('catalog/upload'), 'attr') ?>" method="post" enctype="multipart/form-data" class="mb-5">
+                <?= csrf_field() ?>
+                <label class="label" for="catalog-zip">Upload catalog ZIP</label>
+                <p class="help mb-2">Maximum ZIP size: 50 MiB. Use the same folder structure as /apps, including standard/category/app or singleton/category/app. Existing items cannot be replaced. Only upload trusted files: starting an app grants it access to Docker.</p>
+                <div class="field is-grouped">
+                    <div class="control">
+                        <div class="file">
+                            <label class="file-label">
+                                <input class="file-input" id="catalog-zip" type="file" name="catalog" accept=".zip,application/zip" required>
+                                <span class="file-cta"><span class="file-label">Choose ZIP</span></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="control"><button class="button is-link" type="submit">Upload catalog</button></div>
+                </div>
+            </form>
+        <?php endif ?>
+
         <?php if ($apps === []): ?>
             <div class="notification is-light">No Compose files were found in the apps directory.</div>
         <?php else: ?>
@@ -44,9 +75,9 @@
                     </nav>
                 </aside>
                 <section class="column">
-                <h2 class="title is-4"><?= esc(ucwords(str_replace(['-', '_'], ' ', $selectedCategory))) ?></h2>
+                <h2 class="title is-4"><?= $selectedCategory === null ? 'Search results' : esc(ucwords(str_replace(['-', '_'], ' ', $selectedCategory))) ?></h2>
                 <div class="columns is-multiline">
-                <?php foreach ($categories[$selectedCategory] as $app): ?>
+                <?php foreach ($displayApps ?? $categories[$selectedCategory] ?? [] as $app): ?>
                     <?= view('partials/app_card', [
                         'app'       => $app,
                         'isRunning' => $running[$app['id']] ?? false,
@@ -56,6 +87,9 @@
                     ]) ?>
                 <?php endforeach ?>
                 </div>
+                <?php if (($displayApps ?? $categories[$selectedCategory] ?? []) === []): ?>
+                    <p class="notification is-light" role="status">No applications match your search.</p>
+                <?php endif ?>
                 </section>
             </div>
         <?php endif ?>

@@ -4,6 +4,12 @@ services:
     restart: unless-stopped
     env_file: env
     environment:
+      SERVER_NAME: "${SERVER_NAME:-Local Host Valheim}"
+      WORLD_NAME: "${WORLD_NAME:-Dedicated}"
+      SERVER_PASS: "${SERVER_PASS:-}"
+      SERVER_PORT: "${SERVER_PORT:?Set SERVER_PORT in env}"
+      SERVER_PUBLIC: "${SERVER_PUBLIC:-false}"
+      CROSSPLAY: "${CROSSPLAY:-false}"
       PUID: "1000"
       PGID: "1000"
     stop_grace_period: 2m

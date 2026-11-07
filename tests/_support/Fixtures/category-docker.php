@@ -2,8 +2,26 @@
 <?php
 
 if (($argv[1] ?? '') === 'ps') {
+    if (in_array('--format', $argv, true)) {
+        file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
+        if (getenv('CATEGORY_TEST_PROJECT')) {
+            echo "category-container\tappstore-first-server-1\n";
+            echo "category-init\tappstore-first-init-1\n";
+        }
+        exit(0);
+    }
     if (getenv('CATEGORY_TEST_PROJECT')) {
         echo "category-container\n";
+    }
+    if (($argv[1] ?? '') === 'logs') {
+        file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
+        if (getenv('CATEGORY_TEST_VERBOSE')) {
+            fwrite(STDERR, "simulated log failure\n");
+            exit(1);
+        }
+        echo "2026-11-07T17:00:00Z server ready <script>alert(1)</script>\n";
+        fwrite(STDERR, "2026-11-07T17:00:01Z server warning\n");
+        exit(0);
     }
     exit(0);
 }
@@ -12,10 +30,6 @@ if (($argv[1] ?? '') === 'inspect') {
     exit(0);
 }
 if (($argv[1] ?? '') === 'compose') {
-    if (in_array('--services', $argv, true)) {
-        echo "category-service\n";
-        exit(0);
-    }
     if (getenv('CATEGORY_TEST_SESSION_LOCK') && file_exists(getenv('CATEGORY_TEST_SESSION_LOCK'))) {
         fwrite(STDERR, "Session is still locked during deployment.\n");
         exit(1);
