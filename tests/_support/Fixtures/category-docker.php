@@ -5,8 +5,8 @@ if (($argv[1] ?? '') === 'ps') {
     if (in_array('--format', $argv, true)) {
         file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
         if (getenv('CATEGORY_TEST_PROJECT')) {
-            echo "category-container\tappstore-first-server-1\n";
-            echo "category-init\tappstore-first-init-1\n";
+            echo "category-container\tlocalhost-first-server-1\n";
+            echo "category-init\tlocalhost-first-init-1\n";
         }
         exit(0);
     }

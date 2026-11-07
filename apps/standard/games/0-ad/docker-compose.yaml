@@ -2,7 +2,7 @@ services:
   0-ad:
     build:
       context: .
-    image: appstore-0-ad:latest
+    image: localhost-0-ad:latest
     restart: unless-stopped
     user: "1000:1000"
     env_file: env

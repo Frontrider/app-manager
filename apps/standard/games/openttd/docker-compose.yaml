@@ -2,7 +2,7 @@ services:
   openttd:
     build:
       context: .
-    image: appstore-openttd:latest
+    image: localhost-openttd:latest
     restart: unless-stopped
     env_file: env
     user: "1000:1000"

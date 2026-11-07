@@ -47,13 +47,13 @@ def bootstrap():
     if key:
         auth_headers = {"X-API-Key": key}
         return
-    file = Path("/config/appstore-bootstrap.json")
+    file = Path("/config/localhost-bootstrap.json")
     if file.exists():
         credentials = json.loads(file.read_text())
     else:
         if status["isClaimed"]:
             raise ValueError("Existing Komga has no saved bootstrap credentials; provide KOMGA_API_KEY. No accounts were changed.")
-        credentials = {"username": "appstore-admin@example.invalid", "password": secrets.token_urlsafe(32)}
+        credentials = {"username": "localhost-admin@example.invalid", "password": secrets.token_urlsafe(32)}
         with open(file, "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
             json.dump(credentials, stream)
             stream.flush()

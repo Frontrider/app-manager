@@ -13,7 +13,7 @@ RUN apt-get update \
     && chmod 755 /usr/local/bin/sftpgo-plugin-auth \
     && rm -rf /var/lib/apt/lists/*
 COPY entrypoint.sh /usr/local/bin/app-entrypoint
-COPY groups.json /etc/sftpgo/appstore-groups.json
+COPY groups.json /etc/sftpgo/localhost-groups.json
 RUN chmod 755 /usr/local/bin/app-entrypoint
 USER 1000:1000
 ENTRYPOINT ["app-entrypoint"]

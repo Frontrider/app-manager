@@ -3,7 +3,7 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$root"
-prefix="appstore-library-smoke-$$"
+prefix="localhost-library-smoke-$$"
 cleanup() {
     docker rm -f "$prefix-komga" "$prefix-jellyfin" >/dev/null 2>&1 || true
     docker network rm "$prefix" >/dev/null

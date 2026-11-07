@@ -2,7 +2,7 @@
 
 namespace App\Controllers;
 
-use App\Libraries\AppStore;
+use App\Libraries\ApplicationModel;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\ResponseInterface;
 use RuntimeException;
@@ -11,7 +11,7 @@ class Home extends BaseController
 {
     public function index(?string $category = null): ResponseInterface
     {
-        $store = new AppStore();
+        $store = new ApplicationModel();
         $apps  = $store->catalog();
         $running = $store->runningApps($apps);
         $canManage = session()->get('ldap_user')['isAdmin'] === true;
@@ -83,7 +83,7 @@ class Home extends BaseController
             if (strtolower($upload->getClientExtension()) !== 'zip') {
                 throw new RuntimeException('Upload a ZIP archive.');
             }
-            $count = (new AppStore())->importCatalog($upload->getTempName());
+            $count = (new ApplicationModel())->importCatalog($upload->getTempName());
             $level = 'success';
             $message = $count . ' catalog item(s) added.';
         } catch (RuntimeException $exception) {
@@ -104,7 +104,7 @@ class Home extends BaseController
 
     public function logs(string $id): ResponseInterface
     {
-        $store = new AppStore();
+        $store = new ApplicationModel();
         try {
             $app = $store->find($id);
         } catch (RuntimeException $exception) {
@@ -123,7 +123,7 @@ class Home extends BaseController
     public function logOutput(string $id): ResponseInterface
     {
         session()->close();
-        $store = new AppStore();
+        $store = new ApplicationModel();
         try {
             $app = $store->find($id);
         } catch (RuntimeException $exception) {
@@ -144,7 +144,7 @@ class Home extends BaseController
 
     public function logo(string $id): ResponseInterface
     {
-        $store = new AppStore();
+        $store = new ApplicationModel();
 
         try {
             $app = $store->find($id);
@@ -173,7 +173,7 @@ class Home extends BaseController
         $category = null;
 
         try {
-            $store = new AppStore();
+            $store = new ApplicationModel();
             $app   = $store->find($id);
             $category = $store->category($app);
 

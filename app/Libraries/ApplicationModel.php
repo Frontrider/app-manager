@@ -7,7 +7,7 @@ use RecursiveIteratorIterator;
 use RuntimeException;
 use SplFileInfo;
 
-class AppStore
+class ApplicationModel
 {
     private string $appsDirectory;
     private string $dockerBinary;
@@ -23,7 +23,7 @@ class AppStore
 
         $this->appsDirectory = $directory;
         $this->dockerBinary  = getenv('DOCKER_BIN') ?: 'docker';
-        $this->lockFile      = ROOTPATH . 'writable/cache/app-store.lock';
+        $this->lockFile      = ROOTPATH . 'writable/cache/localhost.lock';
     }
 
     /**
@@ -63,7 +63,7 @@ class AppStore
                     'name'    => ucwords(str_replace(['-', '_'], ' ', $name)),
                     'path'    => $relativePath,
                     'file'    => $path,
-                    'project' => 'appstore-' . trim(preg_replace('/[^a-z0-9_-]+/', '-', strtolower($name)), '-'),
+                    'project' => 'localhost-' . trim(preg_replace('/[^a-z0-9_-]+/', '-', strtolower($name)), '-'),
                     'website' => $metadata['website'],
                     'caddyPath' => $metadata['caddyPath'],
                 ];
@@ -72,7 +72,7 @@ class AppStore
 
         $projectCounts = array_count_values(array_column($apps, 'project'));
         foreach ($apps as &$app) {
-            if ($app['project'] === 'appstore-' || $projectCounts[$app['project']] > 1) {
+            if ($app['project'] === 'localhost-' || $projectCounts[$app['project']] > 1) {
                 $app['project'] .= '-' . substr($app['id'], 0, 8);
             }
         }
@@ -776,7 +776,7 @@ class AppStore
         $handle = fopen($this->lockFile, 'c');
 
         if ($handle === false) {
-            throw new RuntimeException('Could not open the app-store operation lock.');
+            throw new RuntimeException('Could not open the localhost operation lock.');
         }
 
         try {

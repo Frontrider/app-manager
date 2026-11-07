@@ -2,7 +2,7 @@ services:
   geysermc:
     build:
       context: .
-    image: appstore-geysermc:latest
+    image: localhost-geysermc:latest
     restart: unless-stopped
     user: "1000:1000"
     env_file: env

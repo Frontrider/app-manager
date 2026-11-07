@@ -2,7 +2,7 @@ services:
   mindustry:
     build:
       context: .
-    image: appstore-mindustry:latest
+    image: localhost-mindustry:latest
     restart: unless-stopped
     user: "1000:1000"
     env_file: env

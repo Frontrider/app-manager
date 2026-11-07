@@ -1,6 +1,6 @@
 <?php
 
-use App\Libraries\AppStore;
+use App\Libraries\ApplicationModel;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -19,7 +19,7 @@ final class AppLogoTest extends CIUnitTestCase
         mkdir($this->directory);
         file_put_contents($this->directory . '/compose.yaml', "services: {}\n");
         $id = hash('sha256', basename($this->directory) . '/compose.yaml');
-        $this->catalogApp = (new AppStore())->find($id);
+        $this->catalogApp = (new ApplicationModel())->find($id);
         $this->withSession(['ldap_user' => [
             'username' => 'test-user', 'isAdmin' => false, 'expiresAt' => time() + 3600,
         ]]);
@@ -93,8 +93,8 @@ final class AppLogoTest extends CIUnitTestCase
         $this->assertStringContainsString('id="theme-toggle"', $html);
         $this->assertStringContainsString('type="checkbox" role="switch"', $html);
         $this->assertStringContainsString('themeToggle.checked', $html);
-        $this->assertStringContainsString('localStorage.getItem(\'appstore-theme\')', $html);
-        $this->assertStringContainsString('localStorage.setItem(\'appstore-theme\', theme)', $html);
+        $this->assertStringContainsString('localStorage.getItem(\'localhost-theme\')', $html);
+        $this->assertStringContainsString('localStorage.setItem(\'localhost-theme\', theme)', $html);
         $this->assertStringContainsString(':root[data-theme="dark"]', $html);
         $this->assertStringContainsString('background: var(--app-background)', $html);
         $this->assertStringContainsString('background: var(--app-logo-background)', $html);
@@ -106,7 +106,7 @@ final class AppLogoTest extends CIUnitTestCase
             $this->directory . '/metadata.properties',
             "website = https://example.org/\ncaddy_path = /books/\n",
         );
-        $app = (new AppStore())->find($this->catalogApp['id']);
+        $app = (new ApplicationModel())->find($this->catalogApp['id']);
         $this->assertSame('https://example.org/', $app['website']);
         $this->assertSame('/books/', $app['caddyPath']);
 
@@ -134,7 +134,7 @@ final class AppLogoTest extends CIUnitTestCase
         file_put_contents($this->directory . '/metadata.properties', 'website = javascript:alert(1)');
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('website must be an HTTP or HTTPS URL');
-        (new AppStore())->find($this->catalogApp['id']);
+        (new ApplicationModel())->find($this->catalogApp['id']);
     }
 
     public function testCaddyPathCannotLinkToAnotherDomain(): void
@@ -142,6 +142,6 @@ final class AppLogoTest extends CIUnitTestCase
         file_put_contents($this->directory . '/metadata.properties', 'caddy_path = //example.org/');
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('caddy_path must be a same-domain absolute path');
-        (new AppStore())->find($this->catalogApp['id']);
+        (new ApplicationModel())->find($this->catalogApp['id']);
     }
 }

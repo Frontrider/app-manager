@@ -2,14 +2,14 @@
 
 namespace App\Controllers;
 
-use App\Libraries\AppStore;
+use App\Libraries\ApplicationModel;
 use CodeIgniter\HTTP\ResponseInterface;
 
 class Sidebar extends BaseController
 {
     public function index(): ResponseInterface
     {
-        $store = new AppStore();
+        $store = new ApplicationModel();
         $apps = $store->catalog();
         $running = $store->runningApps($apps);
         $links = [];

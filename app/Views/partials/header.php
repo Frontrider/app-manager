@@ -6,7 +6,7 @@
     <title>Local Host</title>
     <script>
         try {
-            const savedTheme = localStorage.getItem('appstore-theme');
+            const savedTheme = localStorage.getItem('localhost-theme');
             if (savedTheme === 'light' || savedTheme === 'dark') {
                 document.documentElement.dataset.theme = savedTheme;
             }
@@ -21,7 +21,7 @@
         :root { color-scheme: light; --app-background: #f5f7fa; --app-logo-background: #eef3f8; }
         :root[data-theme="dark"] { color-scheme: dark; --app-background: #161b22; --app-logo-background: #242d38; }
         body { min-height: 100vh; background: var(--app-background); }
-        .hero.is-appstore { background: linear-gradient(120deg, #173b63, #276c91); }
+        .hero.is-localhost { background: linear-gradient(120deg, #173b63, #276c91); }
         .app-card { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
         .app-logo { display: block; width: 100%; height: 160px; object-fit: contain; padding: 1.5rem; background: var(--app-logo-background); }
         .app-card .card-content { flex: 1; }
@@ -52,7 +52,7 @@
     </style>
 </head>
 <body>
-<section class="hero is-appstore">
+<section class="hero is-localhost">
     <div class="hero-body">
         <div class="container">
             <div class="level">

@@ -2,7 +2,7 @@ services:
   openarena:
     build:
       context: .
-    image: appstore-openarena:latest
+    image: localhost-openarena:latest
     restart: unless-stopped
     user: "1000:1000"
     env_file: env

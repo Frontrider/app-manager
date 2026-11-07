@@ -30,8 +30,8 @@ docker run -d --name "$prefix-tiny" -v "$prefix-data:/data" "$prefix-tiny" >/dev
 docker run -d --name "$prefix-sftpgo" -v "$prefix-data:/data" -v "$prefix-state:/var/lib/sftpgo" \
     -v "$prefix-env:/var/environment/global-env:ro" \
     -e SFTPGO_HTTPD__WEB_ROOT=/files -e SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_ADMIN=false \
-    -e SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN=true -e SFTPGO_DEFAULT_ADMIN_USERNAME=appstore-bootstrap \
-    -e SFTPGO_LOADDATA_FROM=/etc/sftpgo/appstore-groups.json -e SFTPGO_LOADDATA_MODE=1 \
+    -e SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN=true -e SFTPGO_DEFAULT_ADMIN_USERNAME=localhost-bootstrap \
+    -e SFTPGO_LOADDATA_FROM=/etc/sftpgo/localhost-groups.json -e SFTPGO_LOADDATA_MODE=1 \
     -e SFTPGO_PLUGINS__0__TYPE=auth -e SFTPGO_PLUGINS__0__CMD=/usr/local/bin/sftpgo-plugin-auth \
     -e SFTPGO_PLUGINS__0__ARGS=serve -e SFTPGO_PLUGINS__0__AUTH_OPTIONS__SCOPE=5 \
     -e SFTPGO_PLUGINS__0__AUTO_MTLS=1 \
@@ -61,7 +61,7 @@ docker exec "$prefix-tiny" sh -ec '
 docker exec "$prefix-sftpgo" sh -ec '
     [ "$(id -u):$(id -g)" = 1000:1000 ]
     test -w /data/videos
-    token=$(curl -fsS -u "appstore-bootstrap:$(cat /var/lib/sftpgo/bootstrap-admin-password)" \
+    token=$(curl -fsS -u "localhost-bootstrap:$(cat /var/lib/sftpgo/bootstrap-admin-password)" \
         http://127.0.0.1:8080/api/v2/token | sed -n "s/.*\"access_token\":\"\([^\"]*\)\".*/\1/p")
     test -n "$token"
     curl -fsS -H "Authorization: Bearer $token" \

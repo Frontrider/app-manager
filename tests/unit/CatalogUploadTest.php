@@ -1,6 +1,6 @@
 <?php
 
-use App\Libraries\AppStore;
+use App\Libraries\ApplicationModel;
 use CodeIgniter\Test\CIUnitTestCase;
 
 final class CatalogUploadTest extends CIUnitTestCase
@@ -47,7 +47,7 @@ final class CatalogUploadTest extends CIUnitTestCase
         $zip->addFromString('apps/' . $relative . '/settings.yml', "not a catalog item\n");
         $zip->close();
 
-        $store = new AppStore();
+        $store = new ApplicationModel();
         $this->assertSame(1, $store->importCatalog($this->archive));
         $app = $store->find(hash('sha256', $relative . '/compose.yaml'));
         $this->importedDirectory = dirname($app['file'], 4);
@@ -69,7 +69,7 @@ final class CatalogUploadTest extends CIUnitTestCase
         $zip->close();
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('unsafe paths');
-        (new AppStore())->importCatalog($this->archive);
+        (new ApplicationModel())->importCatalog($this->archive);
     }
 
     public function testSymlinksAreRejected(): void
@@ -81,6 +81,6 @@ final class CatalogUploadTest extends CIUnitTestCase
         $zip->close();
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('not links');
-        (new AppStore())->importCatalog($this->archive);
+        (new ApplicationModel())->importCatalog($this->archive);
     }
 }

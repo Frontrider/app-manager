@@ -148,7 +148,7 @@
         themeMessage.textContent = '';
 
         try {
-            localStorage.setItem('appstore-theme', theme);
+            localStorage.setItem('localhost-theme', theme);
         } catch (error) {
             console.warn('Could not save the theme.', error);
             themeMessage.textContent = 'Your browser could not save this theme preference.';

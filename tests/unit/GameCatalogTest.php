@@ -1,13 +1,13 @@
 <?php
 
-use App\Libraries\AppStore;
+use App\Libraries\ApplicationModel;
 use CodeIgniter\Test\CIUnitTestCase;
 
 final class GameCatalogTest extends CIUnitTestCase
 {
     public function testAllRequestedGamesAreIndependentCatalogEntries(): void
     {
-        $store = new AppStore();
+        $store = new ApplicationModel();
         $games = array_values(array_filter(
             $store->catalog(),
             static fn (array $app): bool => str_starts_with($app['path'], 'standard/games/'),

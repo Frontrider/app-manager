@@ -1,6 +1,6 @@
 <?php
 
-use App\Libraries\AppStore;
+use App\Libraries\ApplicationModel;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -10,7 +10,7 @@ final class AppCategoryTest extends CIUnitTestCase
 
     private string $directory;
     private array $environment = [];
-    private AppStore $store;
+    private ApplicationModel $store;
     private array $apps;
 
     protected function setUp(): void
@@ -32,7 +32,7 @@ final class AppCategoryTest extends CIUnitTestCase
         putenv('CATEGORY_TEST_PROJECT');
         putenv('CATEGORY_TEST_SESSION_LOCK');
         putenv('CATEGORY_TEST_VERBOSE');
-        $this->store = new AppStore();
+        $this->store = new ApplicationModel();
         $this->apps = array_column($this->store->catalog(), null, 'name');
     }
 
@@ -78,8 +78,8 @@ final class AppCategoryTest extends CIUnitTestCase
 
     public function testProjectNamesAreHumanReadable(): void
     {
-        $this->assertSame('appstore-first', $this->apps['First']['project']);
-        $this->assertSame('appstore-player', $this->apps['Player']['project']);
+        $this->assertSame('localhost-first', $this->apps['First']['project']);
+        $this->assertSame('localhost-player', $this->apps['Player']['project']);
     }
 
     public function testLogsIncludeAllProjectContainersAndBothOutputStreams(): void
@@ -87,8 +87,8 @@ final class AppCategoryTest extends CIUnitTestCase
         $app = $this->apps['First'];
         putenv('CATEGORY_TEST_PROJECT=' . $app['project']);
         $logs = $this->store->logs($app);
-        $this->assertStringContainsString('appstore-first-server-1', $logs);
-        $this->assertStringContainsString('appstore-first-init-1', $logs);
+        $this->assertStringContainsString('localhost-first-server-1', $logs);
+        $this->assertStringContainsString('localhost-first-init-1', $logs);
         $this->assertStringContainsString('server ready', $logs);
         $this->assertStringContainsString('server warning', $logs);
         $calls = array_map(static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
@@ -116,7 +116,7 @@ final class AppCategoryTest extends CIUnitTestCase
         } catch (RuntimeException $exception) {
             $this->assertStringContainsString('simulated failure', $exception->getMessage());
         }
-        $logs = (new AppStore())->logs($app);
+        $logs = (new ApplicationModel())->logs($app);
         $this->assertStringContainsString('Startup failed at ', $logs);
         $this->assertStringContainsString('simulated failure', $logs);
         $this->assertStringContainsString('No containers exist for this app yet.', $logs);
@@ -208,7 +208,7 @@ final class AppCategoryTest extends CIUnitTestCase
     public function testBundledFileBrowsersAreAlternativesToCopyparty(): void
     {
         putenv('APPS_DIR=' . ROOTPATH . 'apps');
-        $store = new AppStore();
+        $store = new ApplicationModel();
         $apps = array_column($store->catalog(), null, 'path');
         $paths = [
             'singleton/files/copyparty/docker-compose.yaml',
@@ -285,7 +285,7 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->assertSame('Server listener', $fields['SERVER_PORT']['description']);
         $this->assertSame('12345', $fields['SERVER_PORT']['value']);
         $this->store->install($app, ['SERVER_PORT' => '23456', 'PASSWORD' => 'a"$secret\'\\']);
-        $savedFields = (new AppStore())->environmentFields($app);
+        $savedFields = (new ApplicationModel())->environmentFields($app);
         $this->assertSame('23456', $savedFields['SERVER_PORT']['value']);
         $this->assertSame('a"$secret\'\\', $savedFields['PASSWORD']['value']);
         $saved = WRITEPATH . 'app-environments/' . $app['id'] . '.env';
@@ -345,7 +345,7 @@ final class AppCategoryTest extends CIUnitTestCase
 
     public function testConcurrentLifecycleActionFailsWithoutWaiting(): void
     {
-        $handle = fopen(ROOTPATH . 'writable/cache/app-store.lock', 'c');
+        $handle = fopen(ROOTPATH . 'writable/cache/localhost.lock', 'c');
         $this->assertTrue(flock($handle, LOCK_EX | LOCK_NB));
         $start = microtime(true);
         try {

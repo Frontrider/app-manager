@@ -1,6 +1,6 @@
 <?php
 
-use App\Libraries\AppStore;
+use App\Libraries\ApplicationModel;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -30,7 +30,7 @@ final class SidebarTest extends CIUnitTestCase
 
     public function testSidebarIsPublicAndContainsOnlyRunningAppLinks(): void
     {
-        $apps = (new AppStore())->catalog();
+        $apps = (new ApplicationModel())->catalog();
         $this->assertNotEmpty($apps);
         $webApps = array_values(array_filter($apps, static fn (array $app): bool => $app['caddyPath'] !== null));
         $this->assertNotEmpty($webApps);
@@ -59,7 +59,7 @@ final class SidebarTest extends CIUnitTestCase
 
     public function testRunningGameServerWithoutWebInterfaceIsOmitted(): void
     {
-        $apps = array_column((new AppStore())->catalog(), null, 'path');
+        $apps = array_column((new ApplicationModel())->catalog(), null, 'path');
         $app = $apps['standard/games/mindustry/docker-compose.yaml'];
         $this->assertNull($app['caddyPath']);
         putenv('SIDEBAR_TEST_PROJECT=' . $app['project']);

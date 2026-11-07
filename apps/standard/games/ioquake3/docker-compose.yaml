@@ -2,7 +2,7 @@ services:
   ioquake3:
     build:
       context: .
-    image: appstore-ioquake3:latest
+    image: localhost-ioquake3:latest
     restart: unless-stopped
     user: "1000:1000"
     env_file: env
