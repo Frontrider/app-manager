@@ -1,0 +1,28 @@
+services:
+  valheim:
+    image: ghcr.io/community-valheim-tools/valheim-server:latest
+    restart: unless-stopped
+    env_file: env
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+    stop_grace_period: 2m
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.udp/:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
+      - "caddy.layer4.udp/:${QUERY_PORT:?Set QUERY_PORT in env}.route.proxy=udp/{{upstreams ${QUERY_PORT}}}"
+    volumes:
+      - valheim_config:/config
+      - valheim_server:/opt/valheim
+
+volumes:
+  valheim_config:
+  valheim_server:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

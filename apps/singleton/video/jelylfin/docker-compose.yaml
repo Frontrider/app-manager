@@ -1,0 +1,76 @@
+services:
+  # One-shot: installs the LDAP plugin and writes its settings into the Jellyfin config volume before Jellyfin starts.
+  jellyfin-init:
+    build:
+      context: .
+      target: init
+    restart: "no"
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/seed.sh"]
+    environment:
+      LDAP_HOST: 172.30.53.2
+      LDAP_BIND_PASSWORD: ${ADMIN_PASS}
+    volumes:
+      - data:/data
+      - jellyfin_data:/config
+
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    restart: always
+    user: "1000:1000"
+    depends_on:
+      jellyfin-init:
+        condition: service_completed_successfully
+    environment:
+      JELLYFIN_CACHE_DIR: /config/cache
+      HEALTHCHECK_URL: http://localhost:8096/jellyfin/health
+    networks:
+      - internal
+    labels:
+      caddy: ':90'
+      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      caddy.5_redir: '/jellyfin /jellyfin/ permanent'
+      # Jellyfin handles login itself through the LDAP plugin, so Caddy only proxies it.
+      caddy.5_handle: '/jellyfin/*'
+      caddy.5_handle.0_reverse_proxy: '{{upstreams 8096}}'
+      caddy.5_handle.0_reverse_proxy.header_up: 'Accept-Encoding identity'
+    ports:
+      - "1900:1900/udp"
+      - "8096:8096"
+    volumes:
+      - jellyfin_data:/config
+      - type: volume
+        source: data
+        target: /data/videos
+        read_only: true
+        volume:
+          subpath: videos
+
+  jellyfin-library-setup:
+    build:
+      context: .
+      target: library
+    restart: "no"
+    user: "1000:1000"
+    depends_on:
+      jellyfin:
+        condition: service_started
+    networks:
+      - internal
+    environment:
+      # Optional override for installations not bootstrapped by this app.
+      JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
+    volumes:
+      - jellyfin_data:/config
+
+volumes:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
+  jellyfin_data:
+    driver: local
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

@@ -1,0 +1,4 @@
+# Web interface port.
+HTTP_PORT=3030
+# Incoming peer TCP/UDP port.
+SERVER_PORT=4240

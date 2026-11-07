@@ -1,0 +1,79 @@
+services:
+  sftpgo-init:
+    build:
+      context: .
+      target: permissions
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    volumes:
+      - data:/data
+      - sftpgo_state:/state
+
+  sftpgo:
+    build:
+      context: .
+    restart: unless-stopped
+    user: "1000:1000"
+    depends_on:
+      sftpgo-init:
+        condition: service_completed_successfully
+    networks:
+      - internal
+    environment:
+      SFTPGO_HTTPD__BINDINGS__0__PORT: "8080"
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_ADMIN: "false"
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_CLIENT: "true"
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_HTTPS: "false"
+      SFTPGO_HTTPD__WEB_ROOT: /files
+      # This app exposes only its web file browser, not unauthenticated public SFTP ports.
+      SFTPGO_SFTPD__BINDINGS__0__PORT: "0"
+      SFTPGO_DATA_PROVIDER__NAME: /var/lib/sftpgo/sftpgo.db
+      SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN: "true"
+      SFTPGO_DEFAULT_ADMIN_USERNAME: appstore-bootstrap
+      SFTPGO_DATA_PROVIDER__BACKUPS_PATH: /var/lib/sftpgo/backups
+      SFTPGO_LOADDATA_FROM: /etc/sftpgo/appstore-groups.json
+      # Keep existing group settings on subsequent starts.
+      SFTPGO_LOADDATA_MODE: "1"
+      SFTPGO_PLUGINS__0__TYPE: auth
+      SFTPGO_PLUGINS__0__AUTH_OPTIONS__SCOPE: "5"
+      SFTPGO_PLUGINS__0__CMD: /usr/local/bin/sftpgo-plugin-auth
+      SFTPGO_PLUGINS__0__ARGS: serve
+      SFTPGO_PLUGINS__0__AUTO_MTLS: "1"
+      SFTPGO_PLUGIN_AUTH_LDAP_URL: "${LDAP_URI:-ldap://core:3890}"
+      SFTPGO_PLUGIN_AUTH_LDAP_BASE_DN: "${LDAP_USER_BASE_DN:-ou=people,dc=example,dc=com}"
+      SFTPGO_PLUGIN_AUTH_LDAP_BIND_DN: "${LDAP_SERVICE_DN:-uid=service,ou=people,dc=example,dc=com}"
+      SFTPGO_PLUGIN_AUTH_LDAP_SEARCH_QUERY: "(&(uid=%username%)(memberOf=cn=lldap_admin,${LDAP_GROUP_BASE_DN:-ou=groups,dc=example,dc=com}))"
+      SFTPGO_PLUGIN_AUTH_PRIMARY_GROUP_PREFIX: lldap_admin
+      SFTPGO_PLUGIN_AUTH_REQUIRE_GROUPS: "true"
+      SFTPGO_PLUGIN_AUTH_STARTTLS: "${LDAP_START_TLS:-0}"
+    labels:
+      caddy: "${CADDY_SITE:-:90}"
+      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      caddy.7_redir: "/files /files/web/client/ permanent"
+      caddy.7_handle: "/files/*"
+      caddy.7_handle.0_forward_auth: "127.0.0.1:9091"
+      caddy.7_handle.0_forward_auth.uri: "/auth/api/authz/forward-auth"
+      caddy.7_handle.0_forward_auth.copy_headers: "Remote-User Remote-Groups Remote-Name Remote-Email"
+      caddy.@sftpgo_denied.not.header_regexp: "Remote-Groups (^|,)lldap_admin(,|$$)"
+      caddy.7_handle.1_respond: "@sftpgo_denied Forbidden 403"
+      caddy.7_handle.2_redir: "/files/ /files/web/client/ temporary"
+      caddy.7_handle.3_reverse_proxy: "{{upstreams 8080}}"
+    volumes:
+      - data:/data
+      - sftpgo_state:/var/lib/sftpgo
+      - global-env:/var/environment/global-env:ro
+
+volumes:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
+  sftpgo_state:
+  global-env:
+    external: true
+    name: "${GLOBAL_ENV_VOLUME:-localhost_global_env}"
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

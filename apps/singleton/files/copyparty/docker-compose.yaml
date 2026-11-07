@@ -1,0 +1,62 @@
+services:
+  copyparty-init:
+    build:
+      context: .
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    volumes:
+      - data:/data
+      - copyparty_config:/cfg
+
+  copyparty:
+    image: copyparty/ac:1.20.26
+    restart: always
+    user: "1000:1000"
+    depends_on:
+      copyparty-init:
+        condition: service_completed_successfully
+    environment:
+      HOME: /cfg
+      XDG_CONFIG_HOME: /cfg
+    command:
+      - -i
+      - 0.0.0.0
+      - -p
+      - "8081"
+      - --http-only
+      - --rp-loc=/files
+      - --xff-src=lan
+      - --idp-h-usr=Remote-User
+      - --idp-h-grp=Remote-Groups
+      - -v
+      - /data:/:A,@lldap_admin:rw,*:c,hist=/cfg/hist/files
+    networks:
+      - internal
+    labels:
+      caddy: ':90'
+      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      caddy.7_redir: '/files /files/ permanent'
+      caddy.7_handle: '/files/*'
+      caddy.7_handle.0_forward_auth: '127.0.0.1:9091'
+      caddy.7_handle.0_forward_auth.uri: '/auth/api/authz/forward-auth'
+      caddy.7_handle.0_forward_auth.copy_headers: 'Remote-User Remote-Groups Remote-Name Remote-Email'
+      caddy.7_handle.4_reverse_proxy: '{{upstreams 8081}}'
+      caddy.7_handle.4_reverse_proxy.header_up: 'Accept-Encoding identity'
+      # Copyparty's nonce-based CSP blocks the injected menu script.
+      caddy.7_handle.5_header: '-Content-Security-Policy'
+    volumes:
+      - data:/data
+      - copyparty_config:/cfg
+
+volumes:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
+  copyparty_config:
+    driver: local
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

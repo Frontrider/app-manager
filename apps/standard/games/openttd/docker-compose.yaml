@@ -1,0 +1,28 @@
+services:
+  openttd:
+    build:
+      context: .
+    image: appstore-openttd:latest
+    restart: unless-stopped
+    env_file: env
+    user: "1000:1000"
+    command: ["/usr/games/openttd", "-D", "0.0.0.0:${SERVER_PORT:?Set SERVER_PORT in env}", "-c", "/data/openttd.cfg"]
+    stdin_open: true
+    tty: true
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.:${SERVER_PORT}.route.proxy={{upstreams ${SERVER_PORT}}}"
+      - "caddy.layer4.udp/:${SERVER_PORT}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
+    volumes:
+      - openttd_data:/data
+
+volumes:
+  openttd_data:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

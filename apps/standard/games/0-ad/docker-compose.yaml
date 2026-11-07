@@ -1,0 +1,25 @@
+services:
+  0-ad:
+    build:
+      context: .
+    image: appstore-0-ad:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: env
+    command: ["/usr/games/pyrogenesis", "-autostart-nonvisual", "-autostart=random/mainland", "-autostart-host", "-autostart-players=2", "-autostart-port=${SERVER_PORT:?Set SERVER_PORT in env}"]
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.udp/:${SERVER_PORT}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
+    volumes:
+      - zero_ad_data:/data
+
+volumes:
+  zero_ad_data:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

@@ -1,0 +1,25 @@
+services:
+  shapez-io:
+    build:
+      context: .
+    image: appstore-shapez-io:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: env
+    networks:
+      - internal
+    # shapez.io is a single-player browser game, not a multiplayer dedicated server.
+    labels:
+      caddy: ":${HTTP_PORT:?Set HTTP_PORT in env}"
+      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      caddy.8_redir: "/shapez /shapez/ permanent"
+      caddy.8_handle_path: "/shapez/*"
+      caddy.8_handle_path.0_forward_auth: "127.0.0.1:9091"
+      caddy.8_handle_path.0_forward_auth.uri: "/auth/api/authz/forward-auth"
+      caddy.8_handle_path.0_forward_auth.copy_headers: "Remote-User Remote-Groups Remote-Name Remote-Email"
+      caddy.8_handle_path.1_reverse_proxy: "{{upstreams 8080}}"
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

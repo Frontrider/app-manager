@@ -1,0 +1,25 @@
+services:
+  freeorion:
+    build:
+      context: .
+    image: appstore-freeorion:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: env
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy={{upstreams 12346}}"
+      - "caddy.layer4.udp/:${DISCOVERY_PORT:?Set DISCOVERY_PORT in env}.route.proxy=udp/{{upstreams 12345}}"
+    volumes:
+      - freeorion_data:/data
+
+volumes:
+  freeorion_data:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

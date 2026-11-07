@@ -1,0 +1,25 @@
+services:
+  openarena:
+    build:
+      context: .
+    image: appstore-openarena:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: env
+    command: ["/usr/games/openarena-server", "+set", "dedicated", "2", "+set", "fs_homepath", "/data", "+set", "net_port", "${SERVER_PORT:?Set SERVER_PORT in env}", "+map", "oa_dm1"]
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.udp/:${SERVER_PORT}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
+    volumes:
+      - openarena_data:/data
+
+volumes:
+  openarena_data:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

@@ -1,0 +1,11 @@
+{
+  "groups": [
+    {
+      "name": "lldap_admin",
+      "user_settings": {
+        "home_dir": "/data",
+        "permissions": {"/": ["*"]}
+      }
+    }
+  ]
+}

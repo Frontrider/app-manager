@@ -1,0 +1,77 @@
+services:
+  komga-init:
+    image: alpine:3.22
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /data/books /config
+        chown 1000:1000 /data/books
+        chown -R 1000:1000 /config
+    volumes:
+      - data:/data
+      - komga_config:/config
+
+  komga:
+    image: gotson/komga:latest
+    restart: always
+    user: "1000:1000"
+    depends_on:
+      komga-init:
+        condition: service_completed_successfully
+    environment:
+      KOMGA_LIBRARIES_SCAN_STARTUP: "true"
+      SERVER_SERVLET_CONTEXT_PATH: /books
+    networks:
+      - internal
+    labels:
+      caddy: ':90'
+      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      caddy.6_redir: '/books /books/ permanent'
+      caddy.6_handle: '/books/*'
+      caddy.6_handle.0_forward_auth: '127.0.0.1:9091'
+      caddy.6_handle.0_forward_auth.uri: '/auth/api/authz/forward-auth'
+      caddy.6_handle.0_forward_auth.copy_headers: 'Remote-User Remote-Groups Remote-Name Remote-Email'
+      caddy.6_handle.1_header: '@komga_other Content-Type "text/html; charset=utf-8"'
+      caddy.6_handle.2_respond: '@komga_other "<html><body><h1>Unauthorized</h1><p>Komga is only available to the admin user.</p>{file./etc/caddy/menu.html}</body></html>" 403'
+      caddy.6_handle.3_reverse_proxy: '{{upstreams 25600}}'
+      caddy.6_handle.3_reverse_proxy.header_up: 'Accept-Encoding identity'
+    volumes:
+      - komga_config:/config
+      - type: volume
+        source: data
+        target: /data/books
+        read_only: true
+        volume:
+          subpath: books
+
+  komga-library-setup:
+    build:
+      context: .
+    restart: "no"
+    user: "1000:1000"
+    depends_on:
+      komga:
+        condition: service_started
+    networks:
+      - internal
+    environment:
+      # Optional override for installations not bootstrapped by this app.
+      KOMGA_API_KEY: "${KOMGA_API_KEY:-}"
+    volumes:
+      - komga_config:/config
+
+volumes:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
+  komga_config:
+    driver: local
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

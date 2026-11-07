@@ -1,0 +1,56 @@
+services:
+  syncthing:
+    image: syncthing/syncthing:latest
+    restart: always
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p "$$STHOMEDIR"
+        chown -R "$$PUID:$$PGID" "$$STHOMEDIR"
+        if [ ! -s "$$STHOMEDIR/config.xml" ]; then
+            su-exec "$$PUID:$$PGID" syncthing generate --home="$$STHOMEDIR"
+        fi
+        sed -i \
+            -e '/<gui /,/<\/gui>/s#<address>.*</address>#<address>0.0.0.0:8384</address>#' \
+            -e '/<gui /,/<\/gui>/s#<insecureAdminAccess>.*</insecureAdminAccess>#<insecureAdminAccess>true</insecureAdminAccess>#' \
+            "$$STHOMEDIR/config.xml"
+        chown "$$PUID:$$PGID" "$$STHOMEDIR/config.xml"
+        exec /bin/entrypoint.sh /bin/syncthing serve --no-restart --no-port-probing --unpaused
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      HOME: /data
+      STHOMEDIR: /var/syncthing
+      STGUIADDRESS: 0.0.0.0:8384
+    networks:
+      - internal
+    labels:
+      caddy: ':90'
+      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      caddy_1: "'': 'syncthing:22000'"
+      'caddy_1.layer4.udp/:22000.route.proxy': 'udp/syncthing:22000'
+      caddy.0_redir: '/syncthing /syncthing/ permanent'
+      caddy.2_handle_path: '/syncthing/*'
+      caddy.2_handle_path.0_forward_auth: '127.0.0.1:9091'
+      caddy.2_handle_path.0_forward_auth.uri: '/auth/api/authz/forward-auth'
+      caddy.2_handle_path.0_forward_auth.copy_headers: 'Remote-User Remote-Groups Remote-Name Remote-Email'
+      caddy.2_handle_path.1_header: '@syncthing_other Content-Type "text/html; charset=utf-8"'
+      caddy.2_handle_path.2_respond: '@syncthing_other "<html><body><h1>Unauthorized</h1><p>Syncthing is only available to the admin user.</p>{file./etc/caddy/menu.html}</body></html>" 403'
+      caddy.2_handle_path.3_reverse_proxy: '{{upstreams 8384}}'
+      caddy.2_handle_path.3_reverse_proxy.header_up: 'Accept-Encoding identity'
+    volumes:
+      - data:/data
+      - syncthing_config:/var/syncthing
+
+volumes:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
+  syncthing_config:
+    driver: local
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

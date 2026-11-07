@@ -1,0 +1,44 @@
+services:
+  tiny-file-manager-init:
+    build:
+      context: .
+      target: permissions
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    volumes:
+      - data:/data
+
+  tiny-file-manager:
+    build:
+      context: .
+    restart: unless-stopped
+    user: "1000:1000"
+    depends_on:
+      tiny-file-manager-init:
+        condition: service_completed_successfully
+    networks:
+      - internal
+    labels:
+      caddy: "${CADDY_SITE:-:90}"
+      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      caddy.7_redir: "/files /files/ permanent"
+      caddy.7_handle: "/files/*"
+      caddy.7_handle.0_forward_auth: "127.0.0.1:9091"
+      caddy.7_handle.0_forward_auth.uri: "/auth/api/authz/forward-auth"
+      caddy.7_handle.0_forward_auth.copy_headers: "Remote-User Remote-Groups Remote-Name Remote-Email"
+      caddy.@tinyfm_denied.not.header_regexp: "Remote-Groups (^|,)lldap_admin(,|$$)"
+      caddy.7_handle.1_respond: "@tinyfm_denied Forbidden 403"
+      caddy.7_handle.2_reverse_proxy: "{{upstreams 8080}}"
+    volumes:
+      - data:/data
+
+volumes:
+  data:
+    external: true
+    name: "${DATA_VOLUME:-localhost_data}"
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

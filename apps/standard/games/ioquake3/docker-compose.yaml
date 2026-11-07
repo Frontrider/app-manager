@@ -1,0 +1,27 @@
+services:
+  ioquake3:
+    build:
+      context: .
+    image: appstore-ioquake3:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: env
+    command: ["+set", "dedicated", "2", "+set", "fs_basepath", "/data", "+set", "fs_homepath", "/data", "+set", "net_port", "${SERVER_PORT:?Set SERVER_PORT in env}", "+map", "q3dm17"]
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.udp/:${SERVER_PORT}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
+    # Copy baseq3/*.pk3 from your legally owned Quake III installation into this volume.
+    # The engine image does not include proprietary game data.
+    volumes:
+      - quake3_data:/data
+
+volumes:
+  quake3_data:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

@@ -1,0 +1,26 @@
+services:
+  minecraft:
+    image: itzg/minecraft-server:latest
+    restart: unless-stopped
+    env_file: env
+    environment:
+      UID: "1000"
+      GID: "1000"
+    stdin_open: true
+    tty: true
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy={{upstreams ${SERVER_PORT}}}"
+    volumes:
+      - minecraft_data:/data
+
+volumes:
+  minecraft_data:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

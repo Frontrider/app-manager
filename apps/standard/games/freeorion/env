@@ -1,0 +1,3 @@
+# Game TCP port and discovery UDP port.
+SERVER_PORT=12346
+DISCOVERY_PORT=12345

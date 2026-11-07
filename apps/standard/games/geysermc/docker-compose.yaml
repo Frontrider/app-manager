@@ -1,0 +1,24 @@
+services:
+  geysermc:
+    build:
+      context: .
+    image: appstore-geysermc:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file: env
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.udp/:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
+    volumes:
+      - geyser_data:/data
+
+volumes:
+  geyser_data:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

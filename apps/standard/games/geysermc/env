@@ -1,0 +1,8 @@
+# The separately installed Minecraft service resolves on the shared network.
+# It must be installed and running; no cross-project depends_on is used.
+JAVA_SERVER_HOST=minecraft
+JAVA_SERVER_PORT=25565
+# online requires Java account authentication. floodgate requires the Java-side plugin/key.
+AUTH_TYPE=online
+# BedrockConnect uses 19132; configure Bedrock clients to use 19133 for Geyser.
+SERVER_PORT=19133

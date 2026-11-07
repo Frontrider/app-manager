@@ -1,0 +1,9 @@
+SERVER_NAME=Local Host Valheim
+WORLD_NAME=Dedicated
+SERVER_PORT=2456
+# Valheim uses SERVER_PORT + 1 for queries; keep this in sync.
+QUERY_PORT=2457
+# Required: choose a password of at least five characters.
+SERVER_PASS=
+SERVER_PUBLIC=false
+CROSSPLAY=false

@@ -1,0 +1,33 @@
+services:
+  hytale:
+    image: deinfreu/hytale-server:latest
+    restart: unless-stopped
+    env_file: env
+    environment:
+      HYTALE_AUTH_MODE: "${AUTH_MODE:?Set AUTH_MODE in env}"
+      HYTALE_SESSION_TOKEN: "${SESSION_TOKEN:-}"
+      HYTALE_IDENTITY_TOKEN: "${IDENTITY_TOKEN:-}"
+    stdin_open: true
+    tty: true
+    networks:
+      - internal
+    labels:
+      - "caddy="
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.layer4.udp/:${SERVER_PORT:?Set SERVER_PORT in env}.route.proxy=udp/{{upstreams ${SERVER_PORT}}}"
+    volumes:
+      - hytale_data:/home/container
+      - type: bind
+        source: /etc/machine-id
+        target: /etc/machine-id
+        read_only: true
+        bind:
+          create_host_path: false
+
+volumes:
+  hytale_data:
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

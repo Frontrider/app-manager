@@ -1,0 +1,3 @@
+# UDP port. Consoles using DNS redirection expect 19132.
+# Configure console DNS separately; this app does not modify the existing DNS service.
+SERVER_PORT=19132

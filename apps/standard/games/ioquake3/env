@@ -1,0 +1,2 @@
+SERVER_PORT=27960
+# Copy legally owned baseq3/*.pk3 into quake3_data:/data/baseq3 before starting.

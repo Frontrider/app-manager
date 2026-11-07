@@ -1,0 +1,7 @@
+# Set TRUE only after accepting https://aka.ms/MinecraftEULA.
+EULA=FALSE
+SERVER_PORT=25565
+TYPE=VANILLA
+VERSION=LATEST
+MEMORY=2G
+MOTD=Local Host Minecraft
