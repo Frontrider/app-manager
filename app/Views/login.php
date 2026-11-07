@@ -4,7 +4,7 @@
         <div class="columns is-centered">
             <div class="column is-one-third-desktop is-half-tablet">
                 <div class="box">
-                    <h1 class="title is-4">Sign in with LDAP</h1>
+                    <h1 class="title is-4">Sign in</h1>
                     <?php if ($error !== null): ?>
                         <div class="notification is-danger is-light" role="alert"><?= esc($error) ?></div>
                     <?php endif ?>

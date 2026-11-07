@@ -63,7 +63,7 @@
                     <?php if (session()->get('ldap_user')): ?>
                         <form method="post" action="<?= esc(site_url('logout'), 'attr') ?>" class="mr-4">
                             <?= csrf_field() ?>
-                            <button type="submit" class="button is-light is-small">Sign out</button>
+                            <button type="submit" class="button is-danger">Sign out</button>
                         </form>
                     <?php endif ?>
                     <label class="theme-control">
