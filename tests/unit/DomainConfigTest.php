@@ -23,7 +23,7 @@ final class DomainConfigTest extends CIUnitTestCase
 
     protected function tearDown(): void
     {
-        foreach (['domain', 'DOMAIN'] as $name) {
+        foreach (['domain', 'DOMAIN', 'HTTPS_ENABLED'] as $name) {
             if (file_exists($this->directory . '/' . $name)) {
                 unlink($this->directory . '/' . $name);
             }
@@ -46,6 +46,24 @@ final class DomainConfigTest extends CIUnitTestCase
     public function testUppercaseDomainFileIsSupported(): void
     {
         file_put_contents($this->directory . '/DOMAIN', 'example.org');
+        $this->assertSame('https://example.org/', (new App())->baseURL);
+    }
+
+    public function testHttpsDisabledSelectsHttpAndAllowsHttpCookies(): void
+    {
+        file_put_contents($this->directory . '/DOMAIN', 'example.org');
+        file_put_contents($this->directory . '/HTTPS_ENABLED', "off\n");
+        putenv('APP_SCHEME=https');
+        $this->assertSame('http://example.org/', (new App())->baseURL);
+        $this->assertFalse((new \Config\Cookie())->secure);
+        putenv('app_baseURL=https://override.example.org/');
+        $this->assertSame('http://override.example.org/', (new App())->baseURL);
+    }
+
+    public function testHttpsEnabledPreservesHttps(): void
+    {
+        file_put_contents($this->directory . '/DOMAIN', 'example.org');
+        file_put_contents($this->directory . '/HTTPS_ENABLED', "on\n");
         $this->assertSame('https://example.org/', (new App())->baseURL);
     }
 

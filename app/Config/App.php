@@ -6,6 +6,24 @@ use CodeIgniter\Config\BaseConfig;
 
 class App extends BaseConfig
 {
+    public static function httpsDisabled(): bool
+    {
+        $directory = getenv('DOMAIN_DIRECTORY') ?: '/var/environment/global-env';
+        $file = rtrim($directory, '/') . '/HTTPS_ENABLED';
+        if (! file_exists($file)) {
+            return false;
+        }
+        if (! is_file($file) || ! is_readable($file)) {
+            throw new \RuntimeException('The global environment HTTPS_ENABLED file is unreadable.');
+        }
+        $contents = file_get_contents($file);
+        if ($contents === false) {
+            throw new \RuntimeException('Could not read the global environment HTTPS_ENABLED file.');
+        }
+
+        return trim($contents) === 'off';
+    }
+
     public function __construct()
     {
         parent::__construct();
@@ -29,7 +47,8 @@ class App extends BaseConfig
 
         $explicitURL = getenv('app_baseURL') ?: getenv('app.baseURL');
         if ($explicitURL) {
-            $this->baseURL = $explicitURL;
+            $this->baseURL = self::httpsDisabled()
+                ? preg_replace('/^https:/', 'http:', $explicitURL) : $explicitURL;
             return;
         }
 
@@ -47,7 +66,8 @@ class App extends BaseConfig
         }
 
         $domain = trim($contents);
-        $scheme = getenv('APP_SCHEME') ?: 'https';
+        $scheme = self::httpsDisabled() ? 'http' : (getenv('APP_SCHEME') ?: 'https');
+
         if (filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false
             || $domain === '' || ! in_array($scheme, ['http', 'https'], true)) {
             throw new \RuntimeException('The global environment domain or APP_SCHEME is invalid.');
@@ -66,7 +86,7 @@ class App extends BaseConfig
      *
      * E.g., http://example.com/
      */
-    public string $baseURL = 'http://localhost:8080/';
+    public string $baseURL = 'http://localhost:80/';
 
     /**
      * Allowed Hostnames in the Site URL other than the hostname in the baseURL.

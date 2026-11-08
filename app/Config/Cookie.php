@@ -7,6 +7,14 @@ use DateTimeInterface;
 
 class Cookie extends BaseConfig
 {
+    public function __construct()
+    {
+        parent::__construct();
+        if (App::httpsDisabled()) {
+            $this->secure = false;
+        }
+    }
+
     /**
      * --------------------------------------------------------------------------
      * Cookie Prefix
