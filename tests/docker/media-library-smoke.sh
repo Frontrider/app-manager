@@ -22,6 +22,12 @@ docker run --rm -v "$prefix-books:/data" -v "$prefix-komga:/config" alpine:3.22 
     'mkdir -p /data/books; chown 1000:1000 /data/books /config'
 docker run --rm -e LDAP_HOST=core -e LDAP_BIND_PASSWORD=validation-only \
     -v "$prefix-videos:/data" -v "$prefix-jellyfin:/config" "$prefix-jellyfin-init"
+docker run --rm -v "$prefix-jellyfin:/config" alpine:3.22 sh -ec \
+    'sed -i -e "s|<LdapServer>.*</LdapServer>|<LdapServer>ldap-server.contoso.com</LdapServer>|" -e "s|<LdapPort>.*</LdapPort>|<LdapPort>389</LdapPort>|" /config/plugins/configurations/Jellyfin.Plugin.LDAP_Auth.xml'
+docker run --rm -e LDAP_HOST=core -e LDAP_BIND_PASSWORD=validation-only \
+    -v "$prefix-videos:/data" -v "$prefix-jellyfin:/config" "$prefix-jellyfin-init"
+docker run --rm -v "$prefix-jellyfin:/config" alpine:3.22 sh -ec \
+    'grep -q "<LdapServer>core</LdapServer>" /config/plugins/configurations/Jellyfin.Plugin.LDAP_Auth.xml && grep -q "<LdapPort>3890</LdapPort>" /config/plugins/configurations/Jellyfin.Plugin.LDAP_Auth.xml'
 docker run -d --name "$prefix-komga" --network "$prefix" --network-alias komga \
     --user 1000:1000 -e SERVER_SERVLET_CONTEXT_PATH=/books \
     -v "$prefix-komga:/config" \

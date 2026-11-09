@@ -26,8 +26,8 @@ if [ ! -d "$PLUGIN_DIR" ]; then
     rm /tmp/ldap-plugin.zip
 fi
 
-# LDAP settings point at LLDAP in the core container. Settings are created once so UI changes survive restarts.
-# Only the bind password is refreshed each boot, since ADMIN_PASS can change.
+# Keep the LDAP endpoint pointed at LLDAP in the core container. Other plugin settings
+# are created once so UI changes survive restarts; the bind password may change each boot.
 ESCAPED_PASS=$(printf '%s' "$LDAP_BIND_PASSWORD" | sed -e 's/[&|\\]/\\&/g' -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
 if [ ! -s "$PLUGIN_CONFIG" ]; then
     cat > "$PLUGIN_CONFIG" <<XML
@@ -55,7 +55,11 @@ if [ ! -s "$PLUGIN_CONFIG" ]; then
 </PluginConfiguration>
 XML
 else
-    sed -i "s|<LdapBindPassword>.*</LdapBindPassword>|<LdapBindPassword>$ESCAPED_PASS</LdapBindPassword>|" "$PLUGIN_CONFIG"
+    sed -i \
+        -e "s|<LdapServer>.*</LdapServer>|<LdapServer>$LDAP_HOST</LdapServer>|" \
+        -e 's|<LdapPort>.*</LdapPort>|<LdapPort>3890</LdapPort>|' \
+        -e "s|<LdapBindPassword>.*</LdapBindPassword>|<LdapBindPassword>$ESCAPED_PASS</LdapBindPassword>|" \
+        "$PLUGIN_CONFIG"
 fi
 
 # Jellyfin reads its base URL from network.xml. Set it on every boot so the /jellyfin prefix survives.
