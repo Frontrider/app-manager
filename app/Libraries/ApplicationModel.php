@@ -770,6 +770,7 @@ class ApplicationModel
                         }
                     }
                 }
+                return 0;
         });
     }
 
