@@ -1,5 +1,5 @@
 services:
-  # One-shot: installs the LDAP plugin and writes its settings into the Jellyfin config volume before Jellyfin starts.
+  # Prepare volume ownership before the non-root application starts.
   jellyfin-init:
     build:
       context: .
@@ -15,13 +15,18 @@ services:
       - jellyfin_data:/config
 
   jellyfin:
-    image: jellyfin/jellyfin:latest
+    build:
+      context: .
+      target: app
     restart: always
     user: "1000:1000"
     depends_on:
       jellyfin-init:
         condition: service_completed_successfully
     environment:
+      LDAP_HOST: core
+      LDAP_BIND_PASSWORD: ${ADMIN_PASS}
+      JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
       JELLYFIN_CACHE_DIR: /config/cache
       HEALTHCHECK_URL: http://localhost:8096/jellyfin/health
     networks:
@@ -45,23 +50,6 @@ services:
         read_only: true
         volume:
           subpath: videos
-
-  jellyfin-library-setup:
-    build:
-      context: .
-      target: library
-    restart: "no"
-    user: "1000:1000"
-    depends_on:
-      jellyfin:
-        condition: service_started
-    networks:
-      - internal
-    environment:
-      # Optional override for installations not bootstrapped by this app.
-      JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
-    volumes:
-      - jellyfin_data:/config
 
 volumes:
   data:

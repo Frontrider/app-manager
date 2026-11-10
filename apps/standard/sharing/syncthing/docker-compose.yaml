@@ -12,8 +12,9 @@ services:
             su-exec "$$PUID:$$PGID" syncthing generate --home="$$STHOMEDIR"
         fi
         sed -i \
-            -e '/<gui /,/<\/gui>/s#<address>.*</address>#<address>0.0.0.0:8384</address>#' \
-            -e '/<gui /,/<\/gui>/s#<insecureAdminAccess>.*</insecureAdminAccess>#<insecureAdminAccess>true</insecureAdminAccess>#' \
+            -e '/<gui /,/<\/gui>/{ /<address>/d; /<insecureAdminAccess>/d; }' \
+            -e '/<gui /a\        <address>0.0.0.0:8384</address>\
+                <insecureAdminAccess>true</insecureAdminAccess>' \
             "$$STHOMEDIR/config.xml"
         chown "$$PUID:$$PGID" "$$STHOMEDIR/config.xml"
         exec /bin/entrypoint.sh /bin/syncthing serve --no-restart --no-port-probing --unpaused

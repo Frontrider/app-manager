@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs once in the jellyfin-init container before Jellyfin starts. Jellyfin's config volume is /config.
+# Runs before Jellyfin starts. Jellyfin's config volume is /config.
 set -eu
 
 if [ "$(id -u)" = 0 ]; then
@@ -26,11 +26,9 @@ if [ ! -d "$PLUGIN_DIR" ]; then
     rm /tmp/ldap-plugin.zip
 fi
 
-# Keep the LDAP endpoint pointed at LLDAP in the core container. Other plugin settings
-# are created once so UI changes survive restarts; the bind password may change each boot.
-ESCAPED_PASS=$(printf '%s' "$LDAP_BIND_PASSWORD" | sed -e 's/[&|\\]/\\&/g' -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
-if [ ! -s "$PLUGIN_CONFIG" ]; then
-    cat > "$PLUGIN_CONFIG" <<XML
+# Setup-managed settings are authoritative, including on existing installations.
+ESCAPED_PASS=$(printf '%s' "$LDAP_BIND_PASSWORD" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+cat > "$PLUGIN_CONFIG" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <LdapServer>$LDAP_HOST</LdapServer>
@@ -54,13 +52,6 @@ if [ ! -s "$PLUGIN_CONFIG" ]; then
   <PasswordResetUrl></PasswordResetUrl>
 </PluginConfiguration>
 XML
-else
-    sed -i \
-        -e "s|<LdapServer>.*</LdapServer>|<LdapServer>$LDAP_HOST</LdapServer>|" \
-        -e 's|<LdapPort>.*</LdapPort>|<LdapPort>3890</LdapPort>|' \
-        -e "s|<LdapBindPassword>.*</LdapBindPassword>|<LdapBindPassword>$ESCAPED_PASS</LdapBindPassword>|" \
-        "$PLUGIN_CONFIG"
-fi
 
 # Jellyfin reads its base URL from network.xml. Set it on every boot so the /jellyfin prefix survives.
 NETWORK_XML=$JF_CONFIG/network.xml
@@ -72,7 +63,8 @@ if [ ! -s "$NETWORK_XML" ]; then
 </NetworkConfiguration>
 XML
 else
-    sed -i -e 's|<BaseUrl />|<BaseUrl>/jellyfin</BaseUrl>|' -e 's|<BaseUrl>[^<]*</BaseUrl>|<BaseUrl>/jellyfin</BaseUrl>|' "$NETWORK_XML"
+    xmlstarlet ed -L -d /NetworkConfiguration/BaseUrl \
+        -s /NetworkConfiguration -t elem -n BaseUrl -v /jellyfin "$NETWORK_XML"
 fi
 
 # The API bootstrap completes the wizard. Never reset its state on later starts.

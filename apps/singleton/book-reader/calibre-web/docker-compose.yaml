@@ -18,16 +18,16 @@ services:
       - calibre_config:/config
       - global-env:/global-env:ro
 
-  calibre-web-setup:
+  calibre-web:
     build:
       context: .
     image: localhost-calibre-web-setup:latest
-    restart: "no"
+    restart: unless-stopped
     user: "1000:1000"
     depends_on:
       calibre-web-init:
         condition: service_completed_successfully
-    command: ["python", "/opt/localhost/setup.py"]
+    command: ["python", "/opt/localhost/setup.py", "--serve"]
     networks:
       - internal
     environment: &ldap
@@ -35,22 +35,16 @@ services:
       LDAP_PORT: "3890"
       LDAP_USER_BASE_DN: "${LDAP_USER_BASE_DN:-ou=people,dc=example,dc=com}"
       LDAP_GROUP_BASE_DN: "${LDAP_GROUP_BASE_DN:-ou=groups,dc=example,dc=com}"
+      COOKIE_PREFIX: localhost-calibre-
     volumes:
       - data:/Data
       - calibre_config:/config
-
-  calibre-web:
-    image: lscr.io/linuxserver/calibre-web:version-0.6.27
-    restart: unless-stopped
-    depends_on:
-      calibre-web-setup:
-        condition: service_completed_successfully
-    networks:
-      - internal
-    environment:
-      PUID: "1000"
-      PGID: "1000"
-      COOKIE_PREFIX: localhost-calibre-
+      - global-env:/global-env:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8083/login', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
     labels:
       caddy: ":90"
       caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
@@ -58,17 +52,14 @@ services:
       caddy.11_handle_path: "/books/*"
       caddy.11_handle_path.reverse_proxy: "{{upstreams 8083}}"
       caddy.11_handle_path.reverse_proxy.header_up: "X-Script-Name /books"
-    volumes:
-      - data:/Data
-      - calibre_config:/config
 
   calibre-web-import:
     image: localhost-calibre-web-setup:latest
     restart: on-failure
     user: "1000:1000"
     depends_on:
-      calibre-web-setup:
-        condition: service_completed_successfully
+      calibre-web:
+        condition: service_healthy
     command: ["python", "/opt/localhost/importer.py"]
     networks:
       - internal

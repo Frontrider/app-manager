@@ -14,7 +14,7 @@ auth_headers = {}
 
 def request(method, path, body=None, headers=None):
     req = Request(
-        "http://jellyfin:8096/jellyfin" + path,
+        os.environ.get("JELLYFIN_URL", "http://jellyfin:8096/jellyfin") + path,
         data=json.dumps(body).encode() if body is not None else None,
         headers={"Content-Type": "application/json", **(headers if headers is not None else auth_headers)},
         method=method,
@@ -84,14 +84,31 @@ def bootstrap():
 def setup():
     bootstrap()
     libraries = request("GET", "/Library/VirtualFolders")
-    if not any("/data/videos" in library["Locations"] for library in libraries):
-        if any(library["Name"] == "Videos" for library in libraries):
-            raise ValueError("A Videos library already exists with a different path.")
+    library = next((library for library in libraries if library["Name"] == "Videos"), None)
+    if library is None:
+        library = next((library for library in libraries if "/data/videos" in library["Locations"]), None)
+    if library is None:
         query = urlencode({"name": "Videos", "paths": "/data/videos", "refreshLibrary": "true"})
         request("POST", "/Library/VirtualFolders?" + query, {
             "LibraryOptions": {"EnableRealtimeMonitor": True}
         })
     else:
+        if "/data/videos" not in library["Locations"]:
+            request("POST", "/Library/VirtualFolders/Paths", {
+                "Name": library["Name"], "Path": "/data/videos"
+            })
+        if library["Name"] == "Videos":
+            for path in library["Locations"]:
+                if path != "/data/videos":
+                    query = urlencode({"name": library["Name"], "path": path})
+                    request("DELETE", "/Library/VirtualFolders/Paths?" + query)
+        options = dict(library["LibraryOptions"])
+        if library["Name"] == "Videos":
+            options["PathInfos"] = [{"Path": "/data/videos"}]
+        options["EnableRealtimeMonitor"] = True
+        request("POST", "/Library/VirtualFolders/LibraryOptions", {
+            "Id": library["ItemId"], "LibraryOptions": options
+        })
         request("POST", "/Library/Refresh")
     print("Videos library configured and scan requested.", flush=True)
 

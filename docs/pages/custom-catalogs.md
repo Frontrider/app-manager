@@ -25,6 +25,13 @@ More information can be found here:
 
 https://docs.docker.com/compose/
 
+Setup-managed configuration must be reapplied by the application container on
+every start, including Docker restarts. A completed one-shot setup dependency is
+not sufficient: Docker does not rerun it when restarting the application.
+Catalog defaults and environment values override UI edits to managed settings.
+Preserve application data, accounts, bootstrap credentials, and unrelated settings.
+Configuration failures must stop startup rather than run with stale settings.
+
 Caddy labels:
 
 https://github.com/lucaslorentz/caddy-docker-proxy

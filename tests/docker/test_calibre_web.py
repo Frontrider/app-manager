@@ -84,6 +84,19 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(constants.LOGIN_LDAP, config.config_login_type)
         self.assertEqual("validation-password", config.config_ldap_serv_password_e)
         self.assertEqual(setup.LIBRARY, config.config_calibre_dir)
+        config.config_ldap_provider_url = "ldap-server.contoso.com"
+        config.config_ldap_port = 389
+        config.config_anonbrowse = 1
+        config.save()
+        with patch.object(setup, "directory_users", return_value={
+            "directory-admin": ("admin@example.invalid", True),
+            "directory-reader": ("reader@example.invalid", False),
+        }):
+            setup.setup()
+        config, ub = setup.application_config()
+        self.assertEqual("core", config.config_ldap_provider_url)
+        self.assertEqual(3890, config.config_ldap_port)
+        self.assertEqual(0, config.config_anonbrowse)
         admin = ub.session.query(ub.User).filter_by(name="directory-admin").one()
         reader = ub.session.query(ub.User).filter_by(name="directory-reader").one()
         self.assertTrue(admin.role_admin())
@@ -100,4 +113,12 @@ class ImportTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if sys.argv[1:] == ["--serve"]:
+        with patch.object(setup, "directory_users", return_value={
+            "directory-admin": ("admin@example.invalid", True),
+            "directory-reader": ("reader@example.invalid", False),
+        }):
+            sys.argv = ["setup.py", "--serve"]
+            setup.main()
+    else:
+        unittest.main()

@@ -107,5 +107,20 @@ def setup():
     print("Calibre library and LLDAP authentication configured.", flush=True)
 
 
-if __name__ == "__main__":
+def main():
+    serve = sys.argv[1:] == ["--serve"]
+    if serve:
+        password = Path("/global-env/lldap_service_password").read_text().strip()
+        if not password:
+            raise ValueError("Core's LDAP service password is empty.")
+        password_file = Path("/config/ldap-password")
+        password_file.touch(mode=0o600)
+        password_file.chmod(0o600)
+        password_file.write_text(password)
     setup()
+    if serve:
+        os.execvp("cps", ["cps", "-p", "/config/app.db", "-i", "0.0.0.0"])
+
+
+if __name__ == "__main__":
+    main()

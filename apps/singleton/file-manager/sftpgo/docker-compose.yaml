@@ -33,8 +33,8 @@ services:
       SFTPGO_DEFAULT_ADMIN_USERNAME: localhost-bootstrap
       SFTPGO_DATA_PROVIDER__BACKUPS_PATH: /var/lib/sftpgo/backups
       SFTPGO_LOADDATA_FROM: /etc/sftpgo/localhost-groups.json
-      # Keep existing group settings on subsequent starts.
-      SFTPGO_LOADDATA_MODE: "1"
+      # Reapply catalog-managed group settings on every start.
+      SFTPGO_LOADDATA_MODE: "0"
       SFTPGO_PLUGINS__0__TYPE: auth
       SFTPGO_PLUGINS__0__AUTH_OPTIONS__SCOPE: "5"
       SFTPGO_PLUGINS__0__CMD: /usr/local/bin/sftpgo-plugin-auth

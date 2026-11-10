@@ -37,7 +37,8 @@ class LibrarySetupTest(unittest.TestCase):
 
     def test_jellyfin_existing_library_is_not_duplicated(self):
         with patch.object(jellyfin, "request", side_effect=[
-            [{"Locations": ["/data/videos"], "Name": "Custom"}], None
+            [{"Locations": ["/data/videos"], "Name": "Custom",
+              "ItemId": "123", "LibraryOptions": {}}], None, None
         ]) as request:
             jellyfin.setup()
         self.assertEqual(request.call_args.args[1], "/Library/Refresh")
