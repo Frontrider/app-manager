@@ -1,6 +1,37 @@
 #!/usr/bin/env php
 <?php
 
+if (getenv('CATEGORY_TEST_ACTIVITY') !== false) {
+    if (($argv[1] ?? '') === 'ps') {
+        echo "activity-container\n";
+        exit(0);
+    }
+    if (($argv[1] ?? '') === 'inspect') {
+        if (getenv('CATEGORY_TEST_ACTIVITY') === 'error') {
+            fwrite(STDERR, "Docker unavailable\n");
+            exit(1);
+        }
+        foreach (json_decode(getenv('CATEGORY_TEST_ACTIVITY'), true, 512, JSON_THROW_ON_ERROR) as $container) {
+            echo json_encode($container, JSON_THROW_ON_ERROR), "\n";
+        }
+        exit(0);
+    }
+}
+if (getenv('CATEGORY_TEST_OPERATION') && in_array($argv[1] ?? '', ['compose', 'stop'], true)) {
+    $states = [];
+    foreach (['starting', 'stopping'] as $state) {
+        $path = dirname(__DIR__, 3) . '/writable/app-operations/' . getenv('CATEGORY_TEST_OPERATION') . '.' . $state;
+        if (is_file($path)) {
+            $handle = fopen($path, 'r');
+            if (! flock($handle, LOCK_SH | LOCK_NB)) {
+                $states[] = ucfirst($state);
+            }
+            fclose($handle);
+        }
+    }
+    file_put_contents(getenv('CATEGORY_TEST_CALLS') . '.operations', json_encode($states) . "\n", FILE_APPEND);
+}
+
 if (($argv[1] ?? '') === 'ps') {
     if (in_array('--quiet', $argv, true) && in_array('--all', $argv, true)) {
         file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
@@ -14,10 +45,6 @@ if (($argv[1] ?? '') === 'ps') {
         if (getenv('CATEGORY_TEST_PROJECT')) {
             echo "category-container\tlocalhost-first-server-1\n";
             echo "category-init\tlocalhost-first-init-1\n";
-        }
-        if (($argv[1] ?? '') === 'stop') {
-            file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
-            exit(0);
         }
         exit(0);
     }
@@ -34,6 +61,10 @@ if (($argv[1] ?? '') === 'ps') {
         fwrite(STDERR, "2026-11-07T17:00:01Z server warning\n");
         exit(0);
     }
+    exit(0);
+}
+if (($argv[1] ?? '') === 'stop') {
+    file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
     exit(0);
 }
 if (($argv[1] ?? '') === 'inspect') {

@@ -62,6 +62,7 @@ Vagrantfile
 
 /writable/debugbar/*
 !/writable/debugbar/index.html
+/writable/app-operations/
 
 php_errors.log
 

@@ -7,6 +7,8 @@ $routes->get('sidebar', 'Sidebar::index');
 $routes->get('login', 'Auth::login');
 $routes->post('login', 'Auth::authenticate');
 $routes->get('/', 'Home::index', ['filter' => 'ldapSession']);
+$routes->get('activity', 'Home::activity', ['filter' => 'ldapSession']);
+$routes->get('activity/output', 'Home::activityOutput', ['filter' => 'ldapSession']);
 $routes->get('category/(:any)', 'Home::index/$1', ['filter' => 'ldapSession']);
 $routes->post('catalog/upload', 'Home::uploadCatalog', ['filter' => 'ldapSession:admin']);
 $routes->post('catalog/search', 'Home::index', ['filter' => 'ldapSession']);

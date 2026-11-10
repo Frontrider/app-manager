@@ -9,10 +9,10 @@ services:
     entrypoint: ["/bin/sh", "/seed.sh"]
     environment:
       LDAP_HOST: core
-      LDAP_BIND_PASSWORD: ${ADMIN_PASS}
     volumes:
       - data:/data
       - jellyfin_data:/config
+      - global-env:/global-env:ro
 
   jellyfin:
     build:
@@ -25,7 +25,6 @@ services:
         condition: service_completed_successfully
     environment:
       LDAP_HOST: core
-      LDAP_BIND_PASSWORD: ${ADMIN_PASS}
       JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
       JELLYFIN_CACHE_DIR: /config/cache
       HEALTHCHECK_URL: http://localhost:8096/jellyfin/health
@@ -44,6 +43,7 @@ services:
       - "8096:8096"
     volumes:
       - jellyfin_data:/config
+      - global-env:/global-env:ro
       - type: volume
         source: data
         target: /data/videos
@@ -57,6 +57,9 @@ volumes:
     name: "${DATA_VOLUME:-localhost_data}"
   jellyfin_data:
     driver: local
+  global-env:
+    external: true
+    name: "${GLOBAL_ENV_VOLUME:-localhost_global_env}"
 
 networks:
   internal:

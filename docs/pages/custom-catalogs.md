@@ -32,6 +32,12 @@ Catalog defaults and environment values override UI edits to managed settings.
 Preserve application data, accounts, bootstrap credentials, and unrelated settings.
 Configuration failures must stop startup rather than run with stale settings.
 
+The **Application activity** screen shows catalog applications that are running,
+starting, or stopping, and flags failed or paused containers. It refreshes every
+three seconds and hides successfully completed setup containers. Start, refresh,
+and stop operations remain visible while Docker commands are in progress.
+Administrators can open an application's logs from this screen.
+
 Caddy labels:
 
 https://github.com/lucaslorentz/caddy-docker-proxy

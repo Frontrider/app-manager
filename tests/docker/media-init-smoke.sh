@@ -6,17 +6,21 @@ cd "$root"
 books=apps/singleton/books/komga/docker-compose.yaml
 videos=apps/singleton/video/jelylfin/docker-compose.yaml
 export DATA_VOLUME="app-manager-media-smoke-$$"
+export GLOBAL_ENV_VOLUME="app-manager-media-env-smoke-$$"
 books_project="app-manager-books-smoke-$$"
 videos_project="app-manager-videos-smoke-$$"
 cleanup() {
     docker compose -p "$books_project" -f "$books" down --volumes --rmi local >/dev/null 2>&1
     docker compose -p "$videos_project" -f "$videos" down --volumes --rmi local >/dev/null 2>&1
-    docker volume rm "$DATA_VOLUME" >/dev/null
+    docker volume rm "$DATA_VOLUME" "$GLOBAL_ENV_VOLUME" >/dev/null
 }
 trap cleanup EXIT
 docker volume create "$DATA_VOLUME" >/dev/null
+docker volume create "$GLOBAL_ENV_VOLUME" >/dev/null
+docker run --rm -v "$GLOBAL_ENV_VOLUME:/global-env" alpine:3.22 sh -ec \
+    'printf "validation-only" > /global-env/lldap_service_password; chmod 644 /global-env/lldap_service_password'
 docker compose -p "$books_project" -f "$books" run --rm --no-deps komga-init
-ADMIN_PASS=validation-only docker compose -p "$videos_project" -f "$videos" run \
+docker compose -p "$videos_project" -f "$videos" run \
     --build --rm --no-deps jellyfin-init
 docker run --rm --user 1000:1000 \
     --mount "type=volume,source=$DATA_VOLUME,target=/data" alpine:3.22 sh -ec '

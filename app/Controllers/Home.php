@@ -9,6 +9,29 @@ use RuntimeException;
 
 class Home extends BaseController
 {
+    public function activity(): ResponseInterface
+    {
+        return $this->response->setHeader('Cache-Control', 'no-store')->setBody(view('activity', [
+            'canManage' => session()->get('ldap_user')['isAdmin'],
+        ]));
+    }
+
+    public function activityOutput(): ResponseInterface
+    {
+        session()->close();
+        $this->response->setHeader('Cache-Control', 'no-store');
+        try {
+            return $this->response->setJSON(['applications' => (new ApplicationModel())->applicationActivity()]);
+        } catch (RuntimeException | \JsonException $exception) {
+            log_message('error', 'Could not read application activity: {message}', [
+                'message' => $exception->getMessage(),
+            ]);
+            return $this->response->setStatusCode(500)->setJSON([
+                'error' => 'Could not read application activity. Try again shortly.',
+            ]);
+        }
+    }
+
     public function index(?string $category = null): ResponseInterface
     {
         $store = new ApplicationModel();

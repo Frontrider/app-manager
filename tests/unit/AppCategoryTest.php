@@ -18,7 +18,8 @@ final class AppCategoryTest extends CIUnitTestCase
         parent::setUp();
         $this->directory = sys_get_temp_dir() . '/app-category-' . bin2hex(random_bytes(8));
         foreach (['APPS_DIR', 'DOCKER_BIN', 'CATEGORY_TEST_PROJECT', 'CATEGORY_TEST_CALLS',
-            'CATEGORY_TEST_SESSION_LOCK', 'CATEGORY_TEST_VERBOSE'] as $name) {
+            'CATEGORY_TEST_SESSION_LOCK', 'CATEGORY_TEST_VERBOSE', 'CATEGORY_TEST_ACTIVITY',
+            'CATEGORY_TEST_OPERATION'] as $name) {
             $this->environment[$name] = getenv($name);
         }
         foreach (['singleton/files/first', 'singleton/files/second', 'singleton/video/player',
@@ -32,6 +33,8 @@ final class AppCategoryTest extends CIUnitTestCase
         putenv('CATEGORY_TEST_PROJECT');
         putenv('CATEGORY_TEST_SESSION_LOCK');
         putenv('CATEGORY_TEST_VERBOSE');
+        putenv('CATEGORY_TEST_ACTIVITY');
+        putenv('CATEGORY_TEST_OPERATION');
         $this->store = new ApplicationModel();
         $this->apps = array_column($this->store->catalog(), null, 'name');
     }
@@ -46,6 +49,12 @@ final class AppCategoryTest extends CIUnitTestCase
             $failure = WRITEPATH . 'app-startup-failures/' . $app['id'] . '.log';
             if (is_file($failure)) {
                 unlink($failure);
+            }
+            foreach (['starting', 'stopping'] as $state) {
+                $operation = WRITEPATH . 'app-operations/' . $app['id'] . '.' . $state;
+                if (is_file($operation)) {
+                    unlink($operation);
+                }
             }
         }
         foreach ($this->environment as $name => $value) {
@@ -74,6 +83,132 @@ final class AppCategoryTest extends CIUnitTestCase
             [$this->apps['Second']['id'] => 'First'],
             $this->store->installationBlocks($apps, $running),
         );
+    }
+
+    private function activityContainer(string $project, string $state, ?string $health = null, int $exitCode = 0): array
+    {
+        return [
+            'name' => '/test-server',
+            'labels' => ['com.docker.compose.project' => $project],
+            'state' => ['Status' => $state, 'ExitCode' => $exitCode, 'Health' => ['Status' => $health]],
+        ];
+    }
+
+    public function testActivityAggregatesDockerStatesAndIgnoresCompletedSetupAndUnknownProjects(): void
+    {
+        $containers = [
+            $this->activityContainer($this->apps['First']['project'], 'running'),
+            $this->activityContainer($this->apps['First']['project'], 'exited'),
+            $this->activityContainer($this->apps['Player']['project'], 'running', 'starting'),
+            $this->activityContainer($this->apps['Reader']['project'], 'exited'),
+            $this->activityContainer($this->apps['Reader']['project'], 'exited', null, 143),
+            $this->activityContainer($this->apps['Reader']['project'], 'exited', 'starting'),
+            $this->activityContainer('unrelated-project', 'running'),
+        ];
+        putenv('CATEGORY_TEST_ACTIVITY=' . json_encode($containers));
+        $activity = array_column($this->store->applicationActivity(), null, 'name');
+        $this->assertSame(['First', 'Player'], array_keys($activity));
+        $this->assertSame('Running', $activity['First']['status']);
+        $this->assertCount(1, $activity['First']['containers']);
+        $this->assertSame('Starting', $activity['Player']['status']);
+        $this->assertSame('video', $activity['Player']['category']);
+        foreach ([
+            ['created', null, 0, 'Starting'], ['restarting', null, 0, 'Starting'],
+            ['running', 'unhealthy', 0, 'Failed'], ['removing', null, 0, 'Stopping'],
+            ['paused', null, 0, 'Paused'], ['dead', null, 0, 'Failed'],
+        ] as [$state, $health, $exitCode, $expected]) {
+            putenv('CATEGORY_TEST_ACTIVITY=' . json_encode([
+                $this->activityContainer($this->apps['First']['project'], $state, $health, $exitCode),
+            ]));
+            $this->assertSame($expected, $this->store->applicationActivity()[0]['status']);
+        }
+    }
+
+    public function testActivityShowsLiveOperationsButNeverStaleMarkers(): void
+    {
+        putenv('CATEGORY_TEST_ACTIVITY=[]');
+        $directory = WRITEPATH . 'app-operations';
+        if (! is_dir($directory)) {
+            mkdir($directory, 0700, true);
+        }
+        foreach (['Starting', 'Stopping'] as $state) {
+            $handle = fopen($directory . '/' . $this->apps['First']['id'] . '.' . strtolower($state), 'c');
+            flock($handle, LOCK_EX);
+            try {
+                $activity = $this->store->applicationActivity();
+                $this->assertSame('First', $activity[0]['name']);
+                $this->assertSame($state, $activity[0]['status']);
+                $this->assertSame([], $activity[0]['containers']);
+            } finally {
+                fclose($handle);
+            }
+            $this->assertSame([], $this->store->applicationActivity());
+        }
+    }
+
+    public function testStartRefreshStopAndStopAllPublishOperationStateAndReleaseIt(): void
+    {
+        $app = $this->apps['First'];
+        putenv('CATEGORY_TEST_OPERATION=' . $app['id']);
+        $this->store->install($app);
+        $this->store->refresh($app);
+        $this->store->uninstall($app);
+        putenv('CATEGORY_TEST_PROJECT=' . $app['project']);
+        $this->store->stopAll();
+        $states = array_map(static fn (string $line): array => json_decode($line, true),
+            file($this->directory . '/calls.operations'));
+        $this->assertSame([
+            ['Starting'], ['Starting'], ['Starting'], ['Starting'], ['Stopping'], ['Stopping'],
+        ], $states);
+        putenv('CATEGORY_TEST_PROJECT');
+        $this->assertSame([], $this->store->applicationActivity());
+        putenv('CATEGORY_TEST_VERBOSE=1');
+        try {
+            $this->store->install($app);
+            $this->fail('A failed deployment must throw.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('simulated failure', $exception->getMessage());
+        }
+        $this->assertSame([], $this->store->applicationActivity());
+    }
+
+    public function testActivityScreenAndFeedRequireLoginAndAreAvailableToReaders(): void
+    {
+        $this->get('activity')->assertRedirectTo(site_url('login'));
+        $this->get('activity/output')->assertRedirectTo(site_url('login'));
+        putenv('CATEGORY_TEST_ACTIVITY=[]');
+        $this->withSession(['ldap_user' => [
+            'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]]);
+        $page = $this->get('activity');
+        $page->assertStatus(200);
+        $html = $page->response()->getBody();
+        $this->assertStringContainsString('Application activity</h1>', $html);
+        $this->assertStringContainsString('data-application-activity=', $html);
+        $document = new DOMDocument();
+        @$document->loadHTML($html);
+        $this->assertSame(0, (new DOMXPath($document))->query('//*[@data-activity-logs]')->length);
+        $feed = $this->get('activity/output');
+        $feed->assertStatus(200);
+        $this->assertSame(['applications' => []], json_decode($feed->response()->getBody(), true));
+        $this->assertStringContainsString('no-store', $feed->response()->getHeaderLine('Cache-Control'));
+        $admin = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('activity');
+        $admin->assertStatus(200);
+        $document = new DOMDocument();
+        @$document->loadHTML($admin->response()->getBody());
+        $this->assertSame(1, (new DOMXPath($document))->query('//*[@data-activity-logs]')->length);
+    }
+
+    public function testActivityFeedReportsDockerErrorsInsteadOfAnEmptyList(): void
+    {
+        putenv('CATEGORY_TEST_ACTIVITY=error');
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]])->get('activity/output');
+        $result->assertStatus(500);
+        $this->assertArrayHasKey('error', json_decode($result->response()->getBody(), true));
     }
 
     public function testProjectNamesAreHumanReadable(): void

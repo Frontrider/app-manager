@@ -157,6 +157,89 @@ class ApplicationModel
     }
 
     /**
+     * @return list<array{id: string, name: string, category: string, status: string, containers: list<array{name: string, status: string}>}>
+     */
+    public function applicationActivity(): array
+    {
+        $apps = $this->catalog();
+        $ids = preg_split('/\s+/', trim($this->run([
+            $this->dockerBinary, 'ps', '--all', '--quiet', '--filter', 'label=com.docker.compose.project',
+        ])), -1, PREG_SPLIT_NO_EMPTY);
+        $containers = [];
+        if ($ids !== []) {
+            $output = $this->run(array_merge([
+                $this->dockerBinary, 'inspect', '--format',
+                '{"name":{{json .Name}},"labels":{{json .Config.Labels}},"state":{{json .State}}}',
+            ], $ids));
+            foreach (array_filter(explode("\n", trim($output))) as $line) {
+                $container = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+                $state = $container['state'];
+                $status = match (true) {
+                    $state['Status'] === 'exited' => null,
+                    $state['Status'] === 'paused' => 'Paused',
+                    $state['Status'] === 'removing' => 'Stopping',
+                    $state['Status'] === 'dead' => 'Failed',
+                    $state['Status'] === 'restarting', $state['Status'] === 'created',
+                        $state['Status'] === 'running'
+                        && ($state['Health']['Status'] ?? null) === 'starting' => 'Starting',
+                    $state['Status'] === 'running'
+                        && ($state['Health']['Status'] ?? null) === 'unhealthy' => 'Failed',
+                    $state['Status'] === 'running' => 'Running',
+                    default => null,
+                };
+                if ($status !== null) {
+                    $containers[$container['labels']['com.docker.compose.project']][] = [
+                        'name' => ltrim($container['name'], '/'), 'status' => $status,
+                    ];
+                }
+            }
+        }
+        $activity = [];
+        foreach ($apps as $app) {
+            $services = $containers[$app['project']] ?? [];
+            $status = null;
+            foreach (['Stopping', 'Starting'] as $operation) {
+                $path = $this->operationPath($app, $operation);
+                if (! is_file($path)) {
+                    continue;
+                }
+                $handle = fopen($path, 'r');
+                if ($handle === false) {
+                    throw new RuntimeException('Could not read the app operation state.');
+                }
+                try {
+                    $locked = flock($handle, LOCK_SH | LOCK_NB, $wouldBlock);
+                    if (! $locked && ! $wouldBlock) {
+                        throw new RuntimeException('Could not check the app operation state.');
+                    }
+                    if (! $locked) {
+                        $status = $operation;
+                        break;
+                    }
+                } finally {
+                    fclose($handle);
+                }
+            }
+            if ($status === null && $services !== []) {
+                foreach (['Stopping', 'Failed', 'Starting', 'Paused', 'Running'] as $candidate) {
+                    if (in_array($candidate, array_column($services, 'status'), true)) {
+                        $status = $candidate;
+                        break;
+                    }
+                }
+            }
+            if ($status !== null) {
+                $activity[] = [
+                    'id' => $app['id'], 'name' => $app['name'], 'category' => $this->category($app),
+                    'status' => $status, 'containers' => $services,
+                ];
+            }
+        }
+
+        return $activity;
+    }
+
+    /**
      * @return array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string}
      */
     public function find(string $id): array
@@ -312,34 +395,36 @@ class ApplicationModel
                 );
             }
 
-            try {
-                if ($environment !== null) {
-                    $this->saveEnvironment($app, $environment);
-                }
-                if ($refresh) {
-                    $this->compose($app, 'pull', '--ignore-buildable');
-                    $this->compose($app, 'build', '--pull', '--no-cache');
-                    $this->compose($app, 'up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans');
-                } else {
-                    $this->compose($app, 'up', '-d');
-                }
-            } catch (RuntimeException $exception) {
+            $this->withAppOperation($app, 'Starting', function () use ($app, $environment, $refresh): void {
                 try {
-                    $this->saveStartupFailure($app, $exception->getMessage());
-                } catch (RuntimeException $storageException) {
-                    log_message('error', 'Could not save startup failure: {message}', [
-                        'message' => $storageException->getMessage(),
-                    ]);
-                    throw new RuntimeException(
-                        $exception->getMessage() . "\n" . $storageException->getMessage(), 0, $exception,
-                    );
+                    if ($environment !== null) {
+                        $this->saveEnvironment($app, $environment);
+                    }
+                    if ($refresh) {
+                        $this->compose($app, 'pull', '--ignore-buildable');
+                        $this->compose($app, 'build', '--pull', '--no-cache');
+                        $this->compose($app, 'up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans');
+                    } else {
+                        $this->compose($app, 'up', '-d');
+                    }
+                } catch (RuntimeException $exception) {
+                    try {
+                        $this->saveStartupFailure($app, $exception->getMessage());
+                    } catch (RuntimeException $storageException) {
+                        log_message('error', 'Could not save startup failure: {message}', [
+                            'message' => $storageException->getMessage(),
+                        ]);
+                        throw new RuntimeException(
+                            $exception->getMessage() . "\n" . $storageException->getMessage(), 0, $exception,
+                        );
+                    }
+                    throw $exception;
                 }
-                throw $exception;
-            }
-            $failure = $this->startupFailurePath($app);
-            if (is_file($failure) && ! unlink($failure)) {
-                throw new RuntimeException('The app started, but its previous startup failure could not be cleared.');
-            }
+                $failure = $this->startupFailurePath($app);
+                if (is_file($failure) && ! unlink($failure)) {
+                    throw new RuntimeException('The app started, but its previous startup failure could not be cleared.');
+                }
+            });
         });
     }
 
@@ -348,7 +433,9 @@ class ApplicationModel
      */
     public function uninstall(array $app): void
     {
-        $this->withLock(fn () => $this->compose($app, 'stop'));
+        $this->withLock(fn () => $this->withAppOperation(
+            $app, 'Stopping', fn () => $this->compose($app, 'stop'),
+        ));
     }
 
     public function stopAll(): void
@@ -363,7 +450,9 @@ class ApplicationModel
                     ]);
                     $ids = array_values(array_filter(array_map('trim', explode("\n", $output))));
                     if ($ids !== []) {
-                        $this->run(array_merge([$this->dockerBinary, 'stop'], $ids));
+                        $this->withAppOperation(
+                            $app, 'Stopping', fn () => $this->run(array_merge([$this->dockerBinary, 'stop'], $ids)),
+                        );
                     }
                 } catch (RuntimeException $exception) {
                     $failures[] = $app['name'] . ': ' . $exception->getMessage();
@@ -829,6 +918,33 @@ class ApplicationModel
         }
 
         return $stdout;
+    }
+
+    private function operationPath(array $app, string $status): string
+    {
+        return WRITEPATH . 'app-operations/' . $app['id'] . '.' . strtolower($status);
+    }
+
+    private function withAppOperation(array $app, string $status, callable $operation): mixed
+    {
+        $path = $this->operationPath($app, $status);
+        $directory = dirname($path);
+        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+            throw new RuntimeException('Could not create the app operation directory.');
+        }
+        $handle = fopen($path, 'c');
+        if ($handle === false) {
+            throw new RuntimeException('Could not open the app operation state.');
+        }
+        try {
+            if (! flock($handle, LOCK_EX | LOCK_NB)) {
+                throw new RuntimeException('Could not track the app operation.');
+            }
+
+            return $operation();
+        } finally {
+            fclose($handle);
+        }
     }
 
     private function withLock(callable $operation): mixed

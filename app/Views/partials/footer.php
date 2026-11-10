@@ -1,4 +1,88 @@
 <script>
+    document.querySelectorAll('[data-application-activity]').forEach((panel) => {
+        const rows = panel.querySelector('[data-activity-rows]');
+        const empty = panel.querySelector('[data-activity-empty]');
+        const errorMessage = panel.querySelector('[data-activity-error]');
+        const template = panel.querySelector('[data-activity-row]');
+        const colors = {
+            Running: 'is-success', Starting: 'is-info', Stopping: 'is-warning',
+            Failed: 'is-danger', Paused: 'is-warning',
+        };
+        let timer;
+        let request;
+        const stop = () => {
+            clearTimeout(timer);
+            request?.abort();
+            request = null;
+        };
+        const refresh = async () => {
+            const currentRequest = new AbortController();
+            request = currentRequest;
+            try {
+                const response = await fetch(panel.dataset.applicationActivity, {
+                    signal: currentRequest.signal, cache: 'no-store', headers: { Accept: 'application/json' },
+                });
+                if (response.redirected) {
+                    throw new Error('Your session has expired. Reload the page to sign in.');
+                }
+                if (!response.headers.get('Content-Type')?.startsWith('application/json')) {
+                    throw new Error(`Could not read application activity (HTTP ${response.status}).`);
+                }
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error ?? 'Could not read application activity.');
+                }
+                if (request !== currentRequest) {
+                    return;
+                }
+                const content = document.createDocumentFragment();
+                result.applications.forEach((app) => {
+                    const row = template.content.cloneNode(true);
+                    row.querySelector('[data-activity-name]').textContent = app.name;
+                    row.querySelector('[data-activity-category]').textContent = app.category;
+                    const status = row.querySelector('[data-activity-status]');
+                    status.textContent = app.status;
+                    status.classList.add(colors[app.status] ?? 'is-light');
+                    const containers = row.querySelector('[data-activity-containers]');
+                    app.containers.forEach((container) => {
+                        const item = document.createElement('li');
+                        item.textContent = `${container.name}: ${container.status}`;
+                        containers.append(item);
+                    });
+                    if (app.containers.length === 0) {
+                        containers.textContent = 'No active containers yet.';
+                    }
+                    const logs = row.querySelector('[data-activity-logs]');
+                    if (logs) {
+                        logs.href = `${logs.href.replace(/\/$/, '')}/${encodeURIComponent(app.id)}/logs`;
+                    }
+                    content.append(row);
+                });
+                rows.replaceChildren(content);
+                empty.classList.toggle('is-hidden', result.applications.length !== 0);
+                empty.textContent = 'No applications are currently running, starting, or stopping.';
+                errorMessage.classList.add('is-hidden');
+                panel.removeAttribute('aria-busy');
+            } catch (error) {
+                if (request === currentRequest && error.name !== 'AbortError') {
+                    errorMessage.textContent = `${error.message} Displayed statuses may be out of date.`;
+                    errorMessage.classList.remove('is-hidden');
+                    empty.classList.add('is-hidden');
+                }
+            } finally {
+                if (request === currentRequest) {
+                    request = null;
+                    timer = setTimeout(refresh, 3000);
+                }
+            }
+        };
+        window.addEventListener('pagehide', stop);
+        window.addEventListener('pageshow', () => {
+            stop();
+            refresh();
+        });
+    });
+
     document.querySelectorAll('[data-app-logs]').forEach((panel) => {
         const output = panel.querySelector('[data-log-output]');
         const errorMessage = panel.querySelector('[data-log-error]');

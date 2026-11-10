@@ -61,6 +61,8 @@
                 </div>
                 <div class="level-right">
                     <?php if (session()->get('ldap_user')): ?>
+                        <a class="button is-light mr-3" href="<?= esc(site_url('/'), 'attr') ?>">Catalog</a>
+                        <a class="button is-light mr-4" href="<?= esc(site_url('activity'), 'attr') ?>">Application activity</a>
                         <form method="post" action="<?= esc(site_url('logout'), 'attr') ?>" class="mr-4">
                             <?= csrf_field() ?>
                             <button type="submit" class="button is-danger">Sign out</button>

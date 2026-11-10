@@ -7,12 +7,12 @@ prefix="localhost-library-smoke-$$"
 cleanup() {
     docker rm -f "$prefix-komga" "$prefix-jellyfin" >/dev/null 2>&1 || true
     docker network rm "$prefix" >/dev/null
-    docker volume rm "$prefix-books" "$prefix-videos" "$prefix-komga" "$prefix-jellyfin" >/dev/null
+    docker volume rm "$prefix-books" "$prefix-videos" "$prefix-komga" "$prefix-jellyfin" "$prefix-env" >/dev/null
     docker image rm "$prefix-komga-setup" "$prefix-jellyfin-setup" "$prefix-jellyfin-init" >/dev/null
 }
 trap cleanup EXIT
 docker network create "$prefix" >/dev/null
-for volume in books videos komga jellyfin; do
+for volume in books videos komga jellyfin env; do
     docker volume create "$prefix-$volume" >/dev/null
 done
 docker build --quiet -t "$prefix-komga-setup" apps/singleton/books/komga >/dev/null
@@ -20,14 +20,16 @@ docker build --quiet --target library -t "$prefix-jellyfin-setup" apps/singleton
 docker build --quiet --target init -t "$prefix-jellyfin-init" apps/singleton/video/jelylfin >/dev/null
 docker run --rm -v "$prefix-books:/data" -v "$prefix-komga:/config" alpine:3.22 sh -ec \
     'mkdir -p /data/books; chown 1000:1000 /data/books /config'
-docker run --rm -e LDAP_HOST=core -e LDAP_BIND_PASSWORD=validation-only \
+docker run --rm -v "$prefix-env:/global-env" alpine:3.22 sh -ec \
+    'printf "validation-only" > /global-env/lldap_service_password; chmod 644 /global-env/lldap_service_password'
+docker run --rm -e LDAP_HOST=core -v "$prefix-env:/global-env:ro" \
     -v "$prefix-videos:/data" -v "$prefix-jellyfin:/config" "$prefix-jellyfin-init"
 docker run --rm -v "$prefix-jellyfin:/config" alpine:3.22 sh -ec \
-    'sed -i -e "s|<LdapServer>.*</LdapServer>|<LdapServer>ldap-server.contoso.com</LdapServer>|" -e "s|<LdapPort>.*</LdapPort>|<LdapPort>389</LdapPort>|" /config/plugins/configurations/Jellyfin.Plugin.LDAP_Auth.xml'
-docker run --rm -e LDAP_HOST=core -e LDAP_BIND_PASSWORD=validation-only \
+    'sed -i -e "s|<LdapServer>.*</LdapServer>|<LdapServer>ldap-server.contoso.com</LdapServer>|" -e "s|<LdapPort>.*</LdapPort>|<LdapPort>389</LdapPort>|" /config/plugins/configurations/LDAP-Auth.xml'
+docker run --rm -e LDAP_HOST=core -v "$prefix-env:/global-env:ro" \
     -v "$prefix-videos:/data" -v "$prefix-jellyfin:/config" "$prefix-jellyfin-init"
 docker run --rm -v "$prefix-jellyfin:/config" alpine:3.22 sh -ec \
-    'grep -q "<LdapServer>core</LdapServer>" /config/plugins/configurations/Jellyfin.Plugin.LDAP_Auth.xml && grep -q "<LdapPort>3890</LdapPort>" /config/plugins/configurations/Jellyfin.Plugin.LDAP_Auth.xml'
+    'grep -q "<LdapServer>core</LdapServer>" /config/plugins/configurations/LDAP-Auth.xml && grep -q "<LdapPort>3890</LdapPort>" /config/plugins/configurations/LDAP-Auth.xml'
 docker run -d --name "$prefix-komga" --network "$prefix" --network-alias komga \
     --user 1000:1000 -e SERVER_SERVLET_CONTEXT_PATH=/books \
     -v "$prefix-komga:/config" \

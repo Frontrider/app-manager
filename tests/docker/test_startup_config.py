@@ -67,6 +67,10 @@ class JellyfinBootTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "config"
             videos = Path(directory) / "videos"
+            environment = Path(directory) / "global-env"
+            environment.mkdir()
+            password_file = environment / "lldap_service_password"
+            password_file.write_text("test&<password>")
             config.mkdir(mode=0o777)
             videos.mkdir(mode=0o777)
             # Use a private, disposable volume layout and run as the test process owner.
@@ -76,11 +80,13 @@ class JellyfinBootTest(unittest.TestCase):
             try:
                 self.docker(
                     "run", "-d", "--name", name, "--user", user,
-                    "-e", "LDAP_HOST=core", "-e", "LDAP_BIND_PASSWORD=test&<password>",
+                    "-e", "LDAP_HOST=core",
                     "-e", "JELLYFIN_CACHE_DIR=/config/cache",
-                    "-v", f"{config}:/config", "-v", f"{videos}:/data/videos:ro", image,
+                    "-v", f"{config}:/config", "-v", f"{videos}:/data/videos:ro",
+                    "-v", f"{environment}:/global-env:ro", image,
                 )
                 self.wait_ready(name)
+                self.assert_effective_ldap_config(name)
                 credentials = (config / "localhost-bootstrap.json").read_bytes()
                 self.docker(
                     "exec", "-e", "JELLYFIN_URL=http://127.0.0.1:8096/jellyfin",
@@ -94,14 +100,18 @@ class JellyfinBootTest(unittest.TestCase):
                     'm["request"]("POST", "/Library/VirtualFolders/LibraryOptions", {"Id": library["ItemId"], "LibraryOptions": options})',
                 )
                 self.docker("stop", name)
-                plugin = config / "plugins/configurations/Jellyfin.Plugin.LDAP_Auth.xml"
-                plugin.write_text("<PluginConfiguration><LdapServer>wrong</LdapServer></PluginConfiguration>")
+                plugin = config / "plugins/configurations/LDAP-Auth.xml"
+                plugin.write_text(
+                    "<PluginConfiguration><LdapServer>ldap-server.contoso.com</LdapServer>"
+                    "<LdapPort>389</LdapPort></PluginConfiguration>"
+                )
                 network = config / "config/network.xml"
                 tree = ElementTree.parse(network)
                 tree.getroot().remove(tree.getroot().find("BaseUrl"))
                 tree.write(network)
                 self.docker("start", name)
                 self.wait_ready(name, successes=2)
+                self.assert_effective_ldap_config(name)
                 self.assertEqual(credentials, (config / "localhost-bootstrap.json").read_bytes())
                 settings = ElementTree.parse(plugin).getroot()
                 self.assertEqual("core", settings.findtext("LdapServer"))
@@ -117,10 +127,39 @@ class JellyfinBootTest(unittest.TestCase):
                 self.assertEqual(1, len(libraries))
                 self.assertEqual(["/data/videos"], libraries[0]["Locations"])
                 self.assertTrue(libraries[0]["LibraryOptions"]["EnableRealtimeMonitor"])
+                password_file.write_text("rotated&<password>")
                 self.docker("restart", name)
                 self.wait_ready(name, successes=3)
+                self.assert_effective_ldap_config(name, password="rotated&<password>")
             finally:
                 self.docker("rm", "-f", name)
+
+    def test_missing_or_empty_service_password_stops_startup(self):
+        image = os.environ["JELLYFIN_STARTUP_IMAGE"]
+        with tempfile.TemporaryDirectory() as directory:
+            for empty in (False, True):
+                if empty:
+                    (Path(directory) / "lldap_service_password").write_text("")
+                result = subprocess.run([
+                    "docker", "run", "--rm", "-v", f"{directory}:/global-env:ro", image,
+                ], capture_output=True, text=True)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("LLDAP service password file", result.stderr)
+                self.assertIn("empty" if empty else "missing or unreadable", result.stderr)
+
+    def assert_effective_ldap_config(self, name, password="test&<password>"):
+        settings = json.loads(self.docker(
+            "exec", "-e", "JELLYFIN_URL=http://127.0.0.1:8096/jellyfin",
+            name, "python3", "-c",
+            'import json, runpy; m = runpy.run_path("/library-setup.py"); m["bootstrap"](); '
+            'plugin = next(p for p in m["request"]("GET", "/Plugins") if p["Name"] == "LDAP-Auth"); '
+            'settings = m["request"]("GET", "/Plugins/" + plugin["Id"] + "/Configuration"); '
+            'print(json.dumps({key: settings[key] for key in ("LdapServer", "LdapPort", "LdapBindUser", "LdapBindPassword")}))',
+        ))
+        self.assertEqual("core", settings["LdapServer"])
+        self.assertEqual(3890, settings["LdapPort"])
+        self.assertEqual("uid=service,ou=people,dc=example,dc=com", settings["LdapBindUser"])
+        self.assertEqual(password, settings["LdapBindPassword"])
 
     def wait_ready(self, name, successes=1):
         deadline = time.monotonic() + 180

@@ -2,6 +2,17 @@
 # Runs before Jellyfin starts. Jellyfin's config volume is /config.
 set -eu
 
+PASSWORD_FILE=/global-env/lldap_service_password
+if [ ! -r "$PASSWORD_FILE" ]; then
+    echo "LLDAP service password file is missing or unreadable: $PASSWORD_FILE" >&2
+    exit 1
+fi
+LDAP_BIND_PASSWORD=$(cat "$PASSWORD_FILE")
+if [ -z "$LDAP_BIND_PASSWORD" ]; then
+    echo "LLDAP service password file is empty." >&2
+    exit 1
+fi
+
 if [ "$(id -u)" = 0 ]; then
     mkdir -p /data/videos
     chown 1000:1000 /data/videos
@@ -13,7 +24,7 @@ LDAP_PLUGIN_VERSION=24.0.0.0
 LDAP_PLUGIN_SHA256=3be1f9d6a6ce9ea375e556dd30136d178a8dbe35cbe866d30d3451dc3ff7e804
 JF_CONFIG=/config/config
 PLUGIN_DIR=/config/plugins/LDAP-Auth_$LDAP_PLUGIN_VERSION
-PLUGIN_CONFIG=/config/plugins/configurations/Jellyfin.Plugin.LDAP_Auth.xml
+PLUGIN_CONFIG=/config/plugins/configurations/LDAP-Auth.xml
 
 mkdir -p "$JF_CONFIG" /config/data /config/cache /config/log /config/plugins/configurations
 
@@ -36,12 +47,12 @@ cat > "$PLUGIN_CONFIG" <<XML
   <UseSsl>false</UseSsl>
   <UseStartTls>false</UseStartTls>
   <SkipSslVerify>false</SkipSslVerify>
-  <LdapBindUser>uid=admin,ou=people,dc=example,dc=com</LdapBindUser>
+  <LdapBindUser>uid=service,ou=people,dc=example,dc=com</LdapBindUser>
   <LdapBindPassword>$ESCAPED_PASS</LdapBindPassword>
   <LdapBaseDn>dc=example,dc=com</LdapBaseDn>
-  <LdapSearchFilter>(uid={0})</LdapSearchFilter>
+  <LdapSearchFilter>(uid={username})</LdapSearchFilter>r>
   <LdapAdminBaseDn>dc=example,dc=com</LdapAdminBaseDn>
-  <LdapAdminFilter>(&amp;(uid={0})(memberOf=cn=lldap_admin,ou=groups,dc=example,dc=com))</LdapAdminFilter>
+  <LdapAdminFilter>(&amp;(uid={username})(memberOf=cn=lldap_admin,ou=groups,dc=example,dc=com))</LdapAdminFilter>
   <LdapSearchAttributes>uid, cn, mail</LdapSearchAttributes>
   <CreateUsersFromLdap>true</CreateUsersFromLdap>
   <LdapUidAttribute>uid</LdapUidAttribute>
