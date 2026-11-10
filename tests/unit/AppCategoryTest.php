@@ -85,12 +85,19 @@ final class AppCategoryTest extends CIUnitTestCase
         );
     }
 
-    private function activityContainer(string $project, string $state, ?string $health = null, int $exitCode = 0): array
+    private function activityContainer(
+        string $project,
+        string $state,
+        ?string $health = null,
+        int $exitCode = 0,
+        string $restart = 'unless-stopped',
+    ): array
     {
         return [
             'name' => '/test-server',
             'labels' => ['com.docker.compose.project' => $project],
             'state' => ['Status' => $state, 'ExitCode' => $exitCode, 'Health' => ['Status' => $health]],
+            'restart' => $restart,
         ];
     }
 
@@ -103,15 +110,20 @@ final class AppCategoryTest extends CIUnitTestCase
             $this->activityContainer($this->apps['Reader']['project'], 'exited'),
             $this->activityContainer($this->apps['Reader']['project'], 'exited', null, 143),
             $this->activityContainer($this->apps['Reader']['project'], 'exited', 'starting'),
+            $this->activityContainer($this->apps['Player']['project'], 'exited', null, 0, 'no'),
             $this->activityContainer('unrelated-project', 'running'),
         ];
         putenv('CATEGORY_TEST_ACTIVITY=' . json_encode($containers));
         $activity = array_column($this->store->applicationActivity(), null, 'name');
-        $this->assertSame(['First', 'Player'], array_keys($activity));
+        $this->assertSame(['First', 'Player', 'Reader'], array_keys($activity));
         $this->assertSame('Running', $activity['First']['status']);
-        $this->assertCount(1, $activity['First']['containers']);
+        $this->assertCount(2, $activity['First']['containers']);
+        $this->assertSame('Stopped', $activity['First']['containers'][1]['status']);
         $this->assertSame('Starting', $activity['Player']['status']);
+        $this->assertCount(1, $activity['Player']['containers']);
         $this->assertSame('video', $activity['Player']['category']);
+        $this->assertSame('Stopped', $activity['Reader']['status']);
+        $this->assertCount(3, $activity['Reader']['containers']);
         foreach ([
             ['created', null, 0, 'Starting'], ['restarting', null, 0, 'Starting'],
             ['running', 'unhealthy', 0, 'Failed'], ['removing', null, 0, 'Stopping'],
@@ -172,6 +184,33 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->assertSame([], $this->store->applicationActivity());
     }
 
+    public function testDeleteDataRemovesOnlyComposeProjectVolumesAndPublishesOperation(): void
+    {
+        $app = $this->apps['First'];
+        putenv('CATEGORY_TEST_OPERATION=' . $app['id']);
+        $this->store->deleteData($app);
+        $calls = array_map(static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            file($this->directory . '/calls'));
+        $this->assertSame(
+            ['down', '--volumes', '--remove-orphans'],
+            array_slice($calls[0], -3),
+        );
+        $states = array_map(static fn (string $line): array => json_decode($line, true),
+            file($this->directory . '/calls.operations'));
+        $this->assertSame([['Deleting']], $states);
+        putenv('CATEGORY_TEST_ACTIVITY=[]');
+        $this->assertSame([], $this->store->applicationActivity());
+    }
+
+    public function testDeleteDataRefusesAppsWithRunningContainers(): void
+    {
+        $app = $this->apps['First'];
+        putenv('CATEGORY_TEST_PROJECT=' . $app['project']);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Stop the app before deleting its data.');
+        $this->store->deleteData($app);
+    }
+
     public function testActivityScreenAndFeedRequireLoginAndAreAvailableToReaders(): void
     {
         $this->get('activity')->assertRedirectTo(site_url('login'));
@@ -185,6 +224,7 @@ final class AppCategoryTest extends CIUnitTestCase
         $html = $page->response()->getBody();
         $this->assertStringContainsString('Application activity</h1>', $html);
         $this->assertStringContainsString('data-application-activity=', $html);
+        $this->assertStringNotContainsString('Delete data</button>', $html);
         $document = new DOMDocument();
         @$document->loadHTML($html);
         $this->assertSame(0, (new DOMXPath($document))->query('//*[@data-activity-logs]')->length);
@@ -199,6 +239,9 @@ final class AppCategoryTest extends CIUnitTestCase
         $document = new DOMDocument();
         @$document->loadHTML($admin->response()->getBody());
         $this->assertSame(1, (new DOMXPath($document))->query('//*[@data-activity-logs]')->length);
+        $this->assertStringContainsString('data-delete-data-form', $admin->response()->getBody());
+        $this->assertStringContainsString('Delete volumes permanently', $admin->response()->getBody());
+        $this->assertStringContainsString('This action is destructive and cannot be undone.', $admin->response()->getBody());
     }
 
     public function testActivityFeedReportsDockerErrorsInsteadOfAnEmptyList(): void
@@ -215,6 +258,51 @@ final class AppCategoryTest extends CIUnitTestCase
     {
         $this->assertSame('localhost-first', $this->apps['First']['project']);
         $this->assertSame('localhost-player', $this->apps['Player']['project']);
+    }
+
+    public function testMetadataProtectionIsDisplayedBesideRuntimeStatus(): void
+    {
+        $app = $this->apps['First'];
+        $metadata = dirname($app['file']) . '/metadata.properties';
+        file_put_contents($metadata, "protected=true\n");
+        $protected = array_column($this->store->catalog(), null, 'id')[$app['id']];
+        $this->assertTrue($protected['protected']);
+        $html = view('partials/app_card', [
+            'app' => $protected, 'isRunning' => true, 'canManage' => false,
+        ]);
+        $document = new DOMDocument();
+        @$document->loadHTML($html);
+        $xpath = new DOMXPath($document);
+        $this->assertSame(
+            1,
+            $xpath->query('//div[contains(concat(" ", normalize-space(@class), " "), " tags ")]'
+                . '/span[normalize-space(.)="Running"]/following-sibling::span'
+                . '[@class="tag is-info is-light" and normalize-space(.)="Protected"]')->length,
+        );
+
+        file_put_contents($metadata, "protected=false\n");
+        $unprotected = array_column($this->store->catalog(), null, 'id')[$app['id']];
+        $this->assertFalse($unprotected['protected']);
+        $html = view('partials/app_card', [
+            'app' => $unprotected, 'isRunning' => false, 'canManage' => false,
+        ]);
+        @$document->loadHTML($html);
+        $xpath = new DOMXPath($document);
+        $this->assertSame(1, $xpath->query('//div[contains(concat(" ", normalize-space(@class), " "), " tags ")]'
+            . '/span[normalize-space(.)="Stopped"]')->length);
+        $this->assertSame(0, $xpath->query('//span[normalize-space(.)="Unprotected"]')->length);
+
+        unlink($metadata);
+        $withoutMetadata = array_column($this->store->catalog(), null, 'id')[$app['id']];
+        $this->assertFalse($withoutMetadata['protected']);
+    }
+
+    public function testInvalidProtectionMetadataIsRejected(): void
+    {
+        file_put_contents(dirname($this->apps['First']['file']) . '/metadata.properties', "protected=yes\n");
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('protected must be true or false');
+        $this->store->catalog();
     }
 
     public function testAppReadmeIsUsedAsAnEscapedDescription(): void

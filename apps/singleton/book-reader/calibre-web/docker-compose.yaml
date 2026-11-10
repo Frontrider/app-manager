@@ -8,13 +8,14 @@ services:
       - /bin/sh
       - -ec
       - |
-        mkdir -p /Data/books /Data/calibre-library /config/cache
+        mkdir -p /Data/books /calibre-library /config/cache
         chown 1000:1000 /Data/books /Data/calibre-library
         chown -R 1000:1000 /config
         test -s /global-env/lldap_service_password
         install -m 600 -o 1000 -g 1000 /global-env/lldap_service_password /config/ldap-password
     volumes:
       - data:/Data
+      - library:/calibre-library
       - calibre_config:/config
       - global-env:/global-env:ro
 
@@ -73,9 +74,12 @@ volumes:
     external: true
     name: "${DATA_VOLUME:-localhost_data}"
   calibre_config:
+    driver: local
   global-env:
     external: true
     name: "${GLOBAL_ENV_VOLUME:-localhost_global_env}"
+  library:
+    driver: local
 
 networks:
   internal:

@@ -20,6 +20,7 @@ services:
     networks:
       - internal
     labels:
+      protected: "true"
       caddy: "${CADDY_SITE:-:90}"
       caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
       caddy.7_redir: "/files /files/ permanent"

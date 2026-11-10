@@ -8,9 +8,14 @@
                     <h3 class="title is-5 mb-0"><?= esc($app['name']) ?></h3>
                 </div>
                 <div class="level-right">
-                    <span class="tag <?= $isRunning ? 'is-success' : 'is-light' ?>">
-                        <?= $isRunning ? 'Running' : 'Stopped' ?>
-                    </span>
+                    <div class="tags has-addons mb-0">
+                        <span class="tag <?= $isRunning ? 'is-success' : 'is-light' ?>">
+                            <?= $isRunning ? 'Running' : 'Stopped' ?>
+                        </span>
+                        <?php if ($app['protected'] ?? false): ?>
+                            <span title="Will not shut down if the server is overloaded"  class="tag is-success is-light">Protected</span>
+                        <?php endif ?>
+                    </div>
                 </div>
             </div>
             <?php if (! empty($app['description'])): ?>

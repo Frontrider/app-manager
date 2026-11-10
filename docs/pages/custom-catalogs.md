@@ -38,6 +38,10 @@ three seconds and hides successfully completed setup containers. Start, refresh,
 and stop operations remain visible while Docker commands are in progress.
 Administrators can open an application's logs from this screen.
 
+When all of an application's services are stopped, administrators can also
+delete its Compose-managed volumes after confirming the irreversible data loss.
+External volumes and bind-mounted host data are preserved.
+
 Caddy labels:
 
 https://github.com/lucaslorentz/caddy-docker-proxy

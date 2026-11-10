@@ -66,6 +66,7 @@ class ApplicationModel
                     'project' => 'localhost-' . trim(preg_replace('/[^a-z0-9_-]+/', '-', strtolower($name)), '-'),
                     'website' => $metadata['website'],
                     'caddyPath' => $metadata['caddyPath'],
+                    'protected' => $metadata['protected'],
                     'description' => $this->description(dirname($path)),
                 ];
             }
@@ -169,13 +170,17 @@ class ApplicationModel
         if ($ids !== []) {
             $output = $this->run(array_merge([
                 $this->dockerBinary, 'inspect', '--format',
-                '{"name":{{json .Name}},"labels":{{json .Config.Labels}},"state":{{json .State}}}',
+                '{"name":{{json .Name}},"labels":{{json .Config.Labels}},"state":{{json .State}},"restart":{{json .HostConfig.RestartPolicy.Name}}}',
             ], $ids));
             foreach (array_filter(explode("\n", trim($output))) as $line) {
                 $container = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
                 $state = $container['state'];
+                if ($state['Status'] === 'exited' && $state['ExitCode'] === 0
+                    && $container['restart'] === 'no') {
+                    continue;
+                }
                 $status = match (true) {
-                    $state['Status'] === 'exited' => null,
+                    $state['Status'] === 'exited' => 'Stopped',
                     $state['Status'] === 'paused' => 'Paused',
                     $state['Status'] === 'removing' => 'Stopping',
                     $state['Status'] === 'dead' => 'Failed',
@@ -198,7 +203,7 @@ class ApplicationModel
         foreach ($apps as $app) {
             $services = $containers[$app['project']] ?? [];
             $status = null;
-            foreach (['Stopping', 'Starting'] as $operation) {
+            foreach (['Deleting', 'Stopping', 'Starting'] as $operation) {
                 $path = $this->operationPath($app, $operation);
                 if (! is_file($path)) {
                     continue;
@@ -221,7 +226,7 @@ class ApplicationModel
                 }
             }
             if ($status === null && $services !== []) {
-                foreach (['Stopping', 'Failed', 'Starting', 'Paused', 'Running'] as $candidate) {
+                foreach (['Deleting', 'Stopping', 'Failed', 'Starting', 'Paused', 'Running', 'Stopped'] as $candidate) {
                     if (in_array($candidate, array_column($services, 'status'), true)) {
                         $status = $candidate;
                         break;
@@ -302,13 +307,13 @@ class ApplicationModel
     }
 
     /**
-     * @return array{website: ?string, caddyPath: ?string}
+     * @return array{website: ?string, caddyPath: ?string, protected: bool}
      */
     private function metadata(string $directory, ?string $stagingRoot = null): array
     {
         $file = $directory . '/metadata.properties';
         if (! file_exists($file)) {
-            return ['website' => null, 'caddyPath' => null];
+            return ['website' => null, 'caddyPath' => null, 'protected' => false];
         }
 
         $path = realpath($file);
@@ -325,6 +330,10 @@ class ApplicationModel
 
         $website = $properties['website'] ?? null;
         $caddyPath = $properties['caddy_path'] ?? null;
+        $protected = $properties['protected'] ?? 'false';
+        if (! is_string($protected) || ! in_array(strtolower($protected), ['true', 'false'], true)) {
+            throw new RuntimeException('App metadata protected must be true or false: ' . $file);
+        }
         if ($website !== null && (! is_string($website)
             || filter_var($website, FILTER_VALIDATE_URL) === false
             || ! in_array(parse_url($website, PHP_URL_SCHEME), ['https', 'http'], true))) {
@@ -338,7 +347,7 @@ class ApplicationModel
             throw new RuntimeException('App metadata caddy_path must be a same-domain absolute path: ' . $file);
         }
 
-        return ['website' => $website, 'caddyPath' => $caddyPath];
+        return ['website' => $website, 'caddyPath' => $caddyPath, 'protected' => strtolower($protected) === 'true'];
     }
 
     /**
@@ -436,6 +445,20 @@ class ApplicationModel
         $this->withLock(fn () => $this->withAppOperation(
             $app, 'Stopping', fn () => $this->compose($app, 'stop'),
         ));
+    }
+
+    public function deleteData(array $app): void
+    {
+        $this->withLock(function () use ($app): void {
+            if ($this->runningApps([$app])[$app['id']]) {
+                throw new RuntimeException('Stop the app before deleting its data.');
+            }
+            $this->withAppOperation(
+                $app,
+                'Deleting',
+                fn () => $this->compose($app, 'down', '--volumes', '--remove-orphans'),
+            );
+        });
     }
 
     public function stopAll(): void

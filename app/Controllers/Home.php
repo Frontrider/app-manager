@@ -125,6 +125,27 @@ class Home extends BaseController
         return $this->runAction($id, 'uninstall');
     }
 
+    public function deleteData(string $id)
+    {
+        $session = session();
+        $session->close();
+        try {
+            $store = new ApplicationModel();
+            $app = $store->find($id);
+            $store->deleteData($app);
+            $level = 'success';
+            $message = $app['name'] . ' stopped and its project volumes were deleted.';
+        } catch (RuntimeException $exception) {
+            $level = 'error';
+            $message = $exception->getMessage();
+        }
+        $session->start();
+        $session->setFlashdata($level, $message);
+        $session->close();
+
+        return redirect()->to(site_url('activity'))->withCookies();
+    }
+
     public function logs(string $id): ResponseInterface
     {
         $store = new ApplicationModel();

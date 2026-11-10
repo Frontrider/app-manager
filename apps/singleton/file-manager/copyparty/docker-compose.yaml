@@ -2,6 +2,7 @@ services:
   copyparty-init:
     build:
       context: .
+      dockerfile: Dockerfile
     restart: "no"
     user: "0:0"
     network_mode: none
@@ -29,11 +30,13 @@ services:
       - --xff-src=lan
       - --idp-h-usr=Remote-User
       - --idp-h-grp=Remote-Groups
+      - -e2dsa
       - -v
       - /data:/:A,@lldap_admin:rw,*:c,hist=/cfg/hist/files
     networks:
       - internal
     labels:
+      protected: "true"
       caddy: ':90'
       caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
       caddy.7_redir: '/files /files/ permanent'

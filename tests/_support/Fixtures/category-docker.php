@@ -19,7 +19,7 @@ if (getenv('CATEGORY_TEST_ACTIVITY') !== false) {
 }
 if (getenv('CATEGORY_TEST_OPERATION') && in_array($argv[1] ?? '', ['compose', 'stop'], true)) {
     $states = [];
-    foreach (['starting', 'stopping'] as $state) {
+    foreach (['starting', 'stopping', 'deleting'] as $state) {
         $path = dirname(__DIR__, 3) . '/writable/app-operations/' . getenv('CATEGORY_TEST_OPERATION') . '.' . $state;
         if (is_file($path)) {
             $handle = fopen($path, 'r');

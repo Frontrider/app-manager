@@ -6,7 +6,7 @@
         const template = panel.querySelector('[data-activity-row]');
         const colors = {
             Running: 'is-success', Starting: 'is-info', Stopping: 'is-warning',
-            Failed: 'is-danger', Paused: 'is-warning',
+            Stopped: 'is-dark', Deleting: 'is-danger', Failed: 'is-danger', Paused: 'is-warning',
         };
         let timer;
         let request;
@@ -35,6 +35,9 @@
                 if (request !== currentRequest) {
                     return;
                 }
+                if (panel.querySelector('.modal.is-active')) {
+                    return;
+                }
                 const content = document.createDocumentFragment();
                 result.applications.forEach((app) => {
                     const row = template.content.cloneNode(true);
@@ -55,12 +58,58 @@
                     const logs = row.querySelector('[data-activity-logs]');
                     if (logs) {
                         logs.href = `${logs.href.replace(/\/$/, '')}/${encodeURIComponent(app.id)}/logs`;
+                        const deleteForm = row.querySelector('[data-delete-data-form]');
+                        deleteForm.action = `${deleteForm.action}/${encodeURIComponent(app.id)}/delete-data`;
+                        deleteForm.hidden = app.status !== 'Stopped';
+                        row.querySelector('[data-delete-title]').id = `delete-data-title-${app.id}`;
+                        row.querySelector('[role="dialog"]').setAttribute('aria-labelledby', `delete-data-title-${app.id}`);
+                        row.querySelector('[data-delete-title]').textContent = `Delete ${app.name} data?`;
+                        const configure = deleteForm.querySelector('[data-configure-app]');
+                        const modal = deleteForm.querySelector('.modal');
+                        const closeModal = () => {
+                            modal.classList.remove('is-active');
+                            modal.setAttribute('aria-hidden', 'true');
+                            document.documentElement.classList.remove('is-clipped');
+                            configure.focus();
+                        };
+                        configure.addEventListener('click', () => {
+                            modal.classList.add('is-active');
+                            modal.setAttribute('aria-hidden', 'false');
+                            document.documentElement.classList.add('is-clipped');
+                            modal.querySelector('button').focus();
+                        });
+                        modal.querySelectorAll('[data-cancel-configuration]').forEach((button) => {
+                            button.addEventListener('click', closeModal);
+                        });
+                        modal.addEventListener('keydown', (event) => {
+                            if (event.key === 'Escape') {
+                                event.preventDefault();
+                                closeModal();
+                            } else if (event.key === 'Tab') {
+                                const controls = [...modal.querySelectorAll('button')].filter((button) => !button.disabled);
+                                const first = controls[0];
+                                const last = controls[controls.length - 1];
+                                if (event.shiftKey && document.activeElement === first) {
+                                    event.preventDefault();
+                                    last.focus();
+                                } else if (!event.shiftKey && document.activeElement === last) {
+                                    event.preventDefault();
+                                    first.focus();
+                                }
+                            }
+                        });
+                        deleteForm.addEventListener('submit', () => {
+                            closeModal();
+                            configure.disabled = true;
+                            deleteForm.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+                            deleteForm.querySelector('[data-confirm-delete]').textContent = 'Deleting...';
+                        });
                     }
                     content.append(row);
                 });
                 rows.replaceChildren(content);
                 empty.classList.toggle('is-hidden', result.applications.length !== 0);
-                empty.textContent = 'No applications are currently running, starting, or stopping.';
+                empty.textContent = 'No application containers or operations to show.';
                 errorMessage.classList.add('is-hidden');
                 panel.removeAttribute('aria-busy');
             } catch (error) {
