@@ -39,7 +39,7 @@
                                     </header>
                                     <section class="modal-card-body">
                                         <p class="mb-3">This permanently deletes this application’s Docker Compose volumes and all data stored in them. This action is destructive and cannot be undone.</p>
-                                        <p>External volumes and bind-mounted host data are not removed.</p>
+                                        <p>External volumes and mounted host data are not removed.</p>
                                     </section>
                                     <footer class="modal-card-foot">
                                         <div class="buttons">

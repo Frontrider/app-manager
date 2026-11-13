@@ -38,8 +38,6 @@ services:
       caddy.2_handle_path.0_forward_auth: '127.0.0.1:9091'
       caddy.2_handle_path.0_forward_auth.uri: '/auth/api/authz/forward-auth'
       caddy.2_handle_path.0_forward_auth.copy_headers: 'Remote-User Remote-Groups Remote-Name Remote-Email'
-      caddy.2_handle_path.1_header: '@syncthing_other Content-Type "text/html; charset=utf-8"'
-      caddy.2_handle_path.2_respond: '@syncthing_other "<html><body><h1>Unauthorized</h1><p>Syncthing is only available to the admin user.</p>{file./etc/caddy/menu.html}</body></html>" 403'
       caddy.2_handle_path.3_reverse_proxy: '{{upstreams 8384}}'
       caddy.2_handle_path.3_reverse_proxy.header_up: 'Accept-Encoding identity'
     volumes:
