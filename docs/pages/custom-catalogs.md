@@ -42,7 +42,32 @@ When all of an application's services are stopped, administrators can also
 delete its Compose-managed volumes after confirming the irreversible data loss.
 External volumes and bind-mounted host data are preserved.
 
-Caddy labels:
+### App metadata
+
+Each application can include an optional `metadata.json` file next to its Compose
+configuration:
+
+```json
+{
+  "website": "https://example.org/",
+  "caddy_path": "/example/",
+  "protected": false,
+  "dependencies": [
+    {
+      "name": "calibre-web",
+      "category": "book-reader",
+      "required": true
+    }
+  ]
+}
+```
+
+- `website` is the official site link shown on the application card.
+- `caddy_path` is the same-domain path exposed through Caddy; running applications link to it.
+- `protected` marks applications that must not be shut down when the server is overloaded.
+- `dependencies` lists applications that must be started before this one. `name` matches the app folder or display name, `category` selects the catalog category, and `required` defaults to `true` and controls whether a missing dependency blocks startup. Dependencies are started recursively, and dependencies that are already running are left alone.
+
+### Caddy labels
 
 https://github.com/lucaslorentz/caddy-docker-proxy
 
@@ -63,13 +88,16 @@ The password is in the `localhost_global_env` volume, in the `lldap_service_pass
 
 Use this with the current user whenever possible, as it is the simplest solution for a deployment at this scale.
 
-##### OIDC
+##### Forward auth
 
-The core image contains an authelia service, which can be used for servers that only accept OIDC authorization. It is configured to use the same users as the LDAP service, so you can use the same credentials.
+When the application does not support ldap, caddy's forward auth can be used.
+You won't get permission management, but access is still restricted to the lldap_admin group.
 
-To gain access:
-1. Request: write oidc/requests/<client_id> on the localhost_global_env volume, with its redirect URIs one per line.
-2. Wait: the core watcher registers the client and restarts Authelia once. Poll for oidc/secrets/<client_id> to appear.
-3. Configure: set the OIDC issuer to https://<DOMAIN>/auth, with the client ID, the secret from the file, the same redirect URIs, and scopes openid profile email groups.
+An example for the caddy labels to use:
+```yaml
+      caddy.7_handle.0_forward_auth: '127.0.0.1:9091'
+      caddy.7_handle.0_forward_auth.uri: '/auth/api/authz/forward-auth'
+      caddy.7_handle.0_forward_auth.copy_headers: 'Remote-User Remote-Groups Remote-Name Remote-Email'
+```
 
-This is a little convoluted, but we also can't do any static configuration with it as all applications are installed dynamically.
+LDAP should be preferred, but this can be used when nothing else is available or compatible.

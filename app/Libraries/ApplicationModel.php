@@ -27,7 +27,7 @@ class ApplicationModel
     }
 
     /**
-     * @return list<array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string}>
+     * @return list<array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}>
      */
     public function catalog(): array
     {
@@ -67,6 +67,7 @@ class ApplicationModel
                     'website' => $metadata['website'],
                     'caddyPath' => $metadata['caddyPath'],
                     'protected' => $metadata['protected'],
+                    'dependencies' => $metadata['dependencies'],
                     'description' => $this->description(dirname($path)),
                 ];
             }
@@ -123,7 +124,7 @@ class ApplicationModel
     }
 
     /**
-     * @param list<array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string}> $apps
+     * @param list<array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}> $apps
      * @return array<string, bool>
      */
     public function runningApps(array $apps): array
@@ -245,7 +246,7 @@ class ApplicationModel
     }
 
     /**
-     * @return array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string}
+     * @return array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}
      */
     public function find(string $id): array
     {
@@ -307,13 +308,23 @@ class ApplicationModel
     }
 
     /**
-     * @return array{website: ?string, caddyPath: ?string, protected: bool}
+     * @return array{
+     *     website: ?string,
+     *     caddyPath: ?string,
+     *     protected: bool,
+     *     dependencies: list<array{name: string, category: string, required: bool}>
+     * }
      */
     private function metadata(string $directory, ?string $stagingRoot = null): array
     {
-        $file = $directory . '/metadata.properties';
+        $file = $directory . '/metadata.json';
         if (! file_exists($file)) {
-            return ['website' => null, 'caddyPath' => null, 'protected' => false];
+            return [
+                'website' => null,
+                'caddyPath' => null,
+                'protected' => false,
+                'dependencies' => [],
+            ];
         }
 
         $path = realpath($file);
@@ -323,15 +334,25 @@ class ApplicationModel
             throw new RuntimeException('App metadata must be a readable file within the apps directory.');
         }
 
-        $properties = parse_ini_file($path, false, INI_SCANNER_RAW);
-        if ($properties === false) {
-            throw new RuntimeException('Could not parse app metadata: ' . $file);
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            throw new RuntimeException('Could not read app metadata: ' . $file);
         }
 
-        $website = $properties['website'] ?? null;
-        $caddyPath = $properties['caddy_path'] ?? null;
-        $protected = $properties['protected'] ?? 'false';
-        if (! is_string($protected) || ! in_array(strtolower($protected), ['true', 'false'], true)) {
+        try {
+            $metadata = json_decode($contents, false, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw new RuntimeException('Could not parse app metadata: ' . $file, 0, $exception);
+        }
+        if (! $metadata instanceof \stdClass) {
+            throw new RuntimeException('App metadata must be a JSON object: ' . $file);
+        }
+        $metadata = (array) $metadata;
+
+        $website = $metadata['website'] ?? null;
+        $caddyPath = $metadata['caddy_path'] ?? null;
+        $protected = $metadata['protected'] ?? false;
+        if (! is_bool($protected)) {
             throw new RuntimeException('App metadata protected must be true or false: ' . $file);
         }
         if ($website !== null && (! is_string($website)
@@ -347,11 +368,59 @@ class ApplicationModel
             throw new RuntimeException('App metadata caddy_path must be a same-domain absolute path: ' . $file);
         }
 
-        return ['website' => $website, 'caddyPath' => $caddyPath, 'protected' => strtolower($protected) === 'true'];
+        return [
+            'website' => $website,
+            'caddyPath' => $caddyPath,
+            'protected' => $protected,
+            'dependencies' => $this->metadataDependencies($metadata['dependencies'] ?? [], $file),
+        ];
     }
 
     /**
-     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string} $app
+     * @return list<array{name: string, category: string, required: bool}>
+     */
+    private function metadataDependencies(mixed $dependencies, string $file): array
+    {
+        if (! is_array($dependencies) || ! array_is_list($dependencies)) {
+            throw new RuntimeException('App metadata dependencies must be a list: ' . $file);
+        }
+
+        $parsed = [];
+        foreach ($dependencies as $dependency) {
+            if (! $dependency instanceof \stdClass) {
+                throw new RuntimeException('App metadata dependencies must contain JSON objects: ' . $file);
+            }
+            $dependency = (array) $dependency;
+
+            $name = $dependency['name'] ?? null;
+            if (! is_string($name) || trim($name) === '') {
+                throw new RuntimeException('App metadata dependency name must be a non-empty string: ' . $file);
+            }
+
+            $category = $dependency['category'] ?? null;
+            if (! is_string($category) || trim($category) === '') {
+                throw new RuntimeException('App metadata dependency category must be a non-empty string: ' . $file);
+            }
+
+            $required = $dependency['required'] ?? true;
+            if (! is_bool($required)) {
+                throw new RuntimeException(
+                    'App metadata dependency required must be true or false: ' . $file,
+                );
+            }
+
+            $parsed[] = [
+                'name' => trim($name),
+                'category' => trim($category),
+                'required' => $required,
+            ];
+        }
+
+        return $parsed;
+    }
+
+    /**
+     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
      */
     public function headerFile(array $app): ?string
     {
@@ -375,7 +444,7 @@ class ApplicationModel
     }
 
     /**
-     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string} $app
+     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
      */
     public function install(array $app, ?array $environment = null): void
     {
@@ -391,54 +460,137 @@ class ApplicationModel
     {
         $this->withLock(function () use ($app, $environment, $refresh): void {
             $apps = $this->catalog();
+            $appsById = array_column($apps, null, 'id');
+            if (! isset($appsById[$app['id']])) {
+                throw new RuntimeException('That app is not available in the catalog.');
+            }
+
             $running = $this->runningApps($apps);
-            if (! $refresh && $running[$app['id']]) {
-                throw new RuntimeException($app['name'] . ' is already running and cannot be deployed again.');
-            }
-
-            $blocks = $this->installationBlocks($apps, $running);
-            if (isset($blocks[$app['id']])) {
-                throw new RuntimeException(
-                    $blocks[$app['id']] . ' is already running in the ' . $this->category($app)
-                    . ' category. Stop it before starting ' . $app['name'] . '.',
-                );
-            }
-
-            $this->withAppOperation($app, 'Starting', function () use ($app, $environment, $refresh): void {
-                try {
-                    if ($environment !== null) {
-                        $this->saveEnvironment($app, $environment);
-                    }
-                    if ($refresh) {
-                        $this->compose($app, 'pull', '--ignore-buildable');
-                        $this->compose($app, 'build', '--pull', '--no-cache');
-                        $this->compose($app, 'up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans');
-                    } else {
-                        $this->compose($app, 'up', '-d');
-                    }
-                } catch (RuntimeException $exception) {
-                    try {
-                        $this->saveStartupFailure($app, $exception->getMessage());
-                    } catch (RuntimeException $storageException) {
-                        log_message('error', 'Could not save startup failure: {message}', [
-                            'message' => $storageException->getMessage(),
-                        ]);
-                        throw new RuntimeException(
-                            $exception->getMessage() . "\n" . $storageException->getMessage(), 0, $exception,
-                        );
-                    }
-                    throw $exception;
-                }
-                $failure = $this->startupFailurePath($app);
-                if (is_file($failure) && ! unlink($failure)) {
-                    throw new RuntimeException('The app started, but its previous startup failure could not be cleared.');
-                }
-            });
+            $this->startApplication($appsById[$app['id']], $apps, $running, $environment, $refresh, []);
         });
     }
 
     /**
-     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string} $app
+     * @param list<array> $apps
+     * @param array<string, bool> $running
+     * @param list<string> $chain
+     */
+    private function startApplication(
+        array $app,
+        array $apps,
+        array &$running,
+        ?array $environment,
+        bool $refresh,
+        array $chain,
+    ): void {
+        if (in_array($app['id'], $chain, true)) {
+            throw new RuntimeException('Circular app dependency detected for ' . $app['name'] . '.');
+        }
+
+        if ($running[$app['id']] && ! $refresh) {
+            throw new RuntimeException($app['name'] . ' is already running and cannot be deployed again.');
+        }
+
+        $chain[] = $app['id'];
+        foreach ($app['dependencies'] ?? [] as $dependency) {
+            $resolved = $this->resolveDependency($apps, $dependency);
+            if ($resolved === null) {
+                if (! $dependency['required']) {
+                    continue;
+                }
+                throw new RuntimeException(
+                    'Required dependency ' . $dependency['name'] . ' in category '
+                    . $dependency['category'] . ' is not available for ' . $app['name'] . '.',
+                );
+            }
+            if ($running[$resolved['id']]) {
+                continue;
+            }
+            $this->startApplication($resolved, $apps, $running, null, false, $chain);
+        }
+
+        $blocks = $this->installationBlocks($apps, $running);
+        if (isset($blocks[$app['id']])) {
+            throw new RuntimeException(
+                $blocks[$app['id']] . ' is already running in the ' . $this->category($app)
+                . ' category. Stop it before starting ' . $app['name'] . '.',
+            );
+        }
+
+        $this->withAppOperation($app, 'Starting', function () use ($app, $environment, $refresh): void {
+            try {
+                if ($environment !== null) {
+                    $this->saveEnvironment($app, $environment);
+                }
+                if ($refresh) {
+                    $this->compose($app, 'pull', '--ignore-buildable');
+                    $this->compose($app, 'build', '--pull', '--no-cache');
+                    $this->compose($app, 'up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans');
+                } else {
+                    $this->compose($app, 'up', '-d');
+                }
+            } catch (RuntimeException $exception) {
+                try {
+                    $this->saveStartupFailure($app, $exception->getMessage());
+                } catch (RuntimeException $storageException) {
+                    log_message('error', 'Could not save startup failure: {message}', [
+                        'message' => $storageException->getMessage(),
+                    ]);
+                    throw new RuntimeException(
+                        $exception->getMessage() . "\n" . $storageException->getMessage(), 0, $exception,
+                    );
+                }
+                throw $exception;
+            }
+            $failure = $this->startupFailurePath($app);
+            if (is_file($failure) && ! unlink($failure)) {
+                throw new RuntimeException('The app started, but its previous startup failure could not be cleared.');
+            }
+        });
+
+        $running[$app['id']] = true;
+    }
+
+    /**
+     * @param list<array> $apps
+     * @param array{name: string, category: string, required: bool} $dependency
+     */
+    private function resolveDependency(array $apps, array $dependency): ?array
+    {
+        $name = $this->normalizeAppIdentifier($dependency['name']);
+        $category = $this->normalizeAppIdentifier($dependency['category']);
+        $matches = [];
+        foreach ($apps as $candidate) {
+            if ($category !== $this->normalizeAppIdentifier($this->category($candidate))) {
+                continue;
+            }
+            $folder = basename(dirname(str_replace('\\', '/', $candidate['path'])));
+            if ($name === $this->normalizeAppIdentifier($candidate['name'])
+                || $name === $this->normalizeAppIdentifier($folder)) {
+                $matches[$candidate['id']] = $candidate;
+            }
+        }
+
+        if (count($matches) > 1) {
+            throw new RuntimeException(
+                'App dependency ' . $dependency['name'] . ' in category ' . $dependency['category']
+                . ' is ambiguous.',
+            );
+        }
+
+        return $matches === [] ? null : reset($matches);
+    }
+
+    private function normalizeAppIdentifier(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $value = str_replace(['_', ' '], '-', $value);
+
+        return preg_replace('/-*\/-*/', '/', $value) ?? $value;
+    }
+
+    /**
+     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
      */
     public function uninstall(array $app): void
     {
@@ -570,7 +722,7 @@ class ApplicationModel
     }
 
     /**
-     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string} $app
+     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
      */
     private function compose(array $app, string ...$arguments): void
     {

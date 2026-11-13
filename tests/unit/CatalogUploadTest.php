@@ -43,7 +43,7 @@ final class CatalogUploadTest extends CIUnitTestCase
         $this->assertTrue($zip->open($this->archive, ZipArchive::OVERWRITE));
         $zip->addFromString('apps/' . $relative . '/compose.yaml', 'Compose contents are not parsed during upload.');
         $zip->addFromString('apps/' . $relative . '/env', "# Listener\nSERVER_PORT=12345\n");
-        $zip->addFromString('apps/' . $relative . '/metadata.properties', "website=https://example.org/\n");
+        $zip->addFromString('apps/' . $relative . '/metadata.json', "{\"website\":\"https://example.org/\"}\n");
         $zip->addFromString('apps/' . $relative . '/settings.yml', "not a catalog item\n");
         $zip->close();
 

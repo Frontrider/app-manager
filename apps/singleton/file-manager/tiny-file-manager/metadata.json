@@ -1,0 +1,5 @@
+{
+  "website": "https://tinyfilemanager.github.io/",
+  "caddy_path": "/files/",
+  "protected": true
+}

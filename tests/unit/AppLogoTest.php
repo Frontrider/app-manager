@@ -27,8 +27,8 @@ final class AppLogoTest extends CIUnitTestCase
 
     protected function tearDown(): void
     {
-        if (file_exists($this->directory . '/metadata.properties')) {
-            unlink($this->directory . '/metadata.properties');
+        if (file_exists($this->directory . '/metadata.json')) {
+            unlink($this->directory . '/metadata.json');
         }
         if (file_exists($this->directory . '/header.png')) {
             unlink($this->directory . '/header.png');
@@ -103,8 +103,8 @@ final class AppLogoTest extends CIUnitTestCase
     public function testCardLinksToOfficialWebsiteWhenStoppedAndCaddyPathWhenRunning(): void
     {
         file_put_contents(
-            $this->directory . '/metadata.properties',
-            "website = https://example.org/\ncaddy_path = /books/\n",
+            $this->directory . '/metadata.json',
+            "{\"website\":\"https://example.org/\",\"caddy_path\":\"/books/\"}\n",
         );
         $app = (new ApplicationModel())->find($this->catalogApp['id']);
         $this->assertSame('https://example.org/', $app['website']);
@@ -118,7 +118,7 @@ final class AppLogoTest extends CIUnitTestCase
         $running = view('partials/app_card', ['app' => $app, 'isRunning' => true]);
         $this->assertStringContainsString('href="' . esc('/books/', 'attr') . '"', $running);
         $this->assertStringContainsString('Open app', $running);
-        $this->assertStringNotContainsString('Official website', $running);
+        $this->assertStringContainsString('Official website', $running);
     }
 
     public function testMetadataIsOptional(): void
@@ -131,15 +131,46 @@ final class AppLogoTest extends CIUnitTestCase
 
     public function testMetadataCannotLinkToExecutableUrl(): void
     {
-        file_put_contents($this->directory . '/metadata.properties', 'website = javascript:alert(1)');
+        file_put_contents($this->directory . '/metadata.json', '{"website":"javascript:alert(1)"}');
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('website must be an HTTP or HTTPS URL');
         (new ApplicationModel())->find($this->catalogApp['id']);
     }
 
+    public function testInvalidMetadataJsonIsRejected(): void
+    {
+        file_put_contents($this->directory . '/metadata.json', '{"website":');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Could not parse app metadata');
+        (new ApplicationModel())->find($this->catalogApp['id']);
+    }
+
+    public function testDependenciesAreLoadedFromMetadata(): void
+    {
+        file_put_contents(
+            $this->directory . '/metadata.json',
+            '{"dependencies":[{"name":"first","category":"files","required":false}]}',
+        );
+        $app = (new ApplicationModel())->find($this->catalogApp['id']);
+        $this->assertSame([
+            ['name' => 'first', 'category' => 'files', 'required' => false],
+        ], $app['dependencies']);
+    }
+
+    public function testInvalidDependencyMetadataIsRejected(): void
+    {
+        file_put_contents(
+            $this->directory . '/metadata.json',
+            '{"dependencies":[{"name":"first","category":"files","required":"yes"}]}',
+        );
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('dependency required must be true or false');
+        (new ApplicationModel())->find($this->catalogApp['id']);
+    }
+
     public function testCaddyPathCannotLinkToAnotherDomain(): void
     {
-        file_put_contents($this->directory . '/metadata.properties', 'caddy_path = //example.org/');
+        file_put_contents($this->directory . '/metadata.json', '{"caddy_path":"//example.org/"}');
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('caddy_path must be a same-domain absolute path');
         (new ApplicationModel())->find($this->catalogApp['id']);

@@ -101,6 +101,28 @@ final class AppCategoryTest extends CIUnitTestCase
         ];
     }
 
+    private function writeDependencies(string $appName, array $dependencies): void
+    {
+        file_put_contents(
+            dirname($this->apps[$appName]['file']) . '/metadata.json',
+            json_encode(['dependencies' => $dependencies], JSON_THROW_ON_ERROR),
+        );
+    }
+
+    private function composeProjects(): array
+    {
+        $calls = array_map(
+            static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            file($this->directory . '/calls'),
+        );
+
+        return array_map(static function (array $call): string {
+            $position = array_search('--project-name', $call, true);
+
+            return $call[$position + 1];
+        }, $calls);
+    }
+
     public function testActivityAggregatesDockerStatesAndIgnoresCompletedSetupAndUnknownProjects(): void
     {
         $containers = [
@@ -263,8 +285,8 @@ final class AppCategoryTest extends CIUnitTestCase
     public function testMetadataProtectionIsDisplayedBesideRuntimeStatus(): void
     {
         $app = $this->apps['First'];
-        $metadata = dirname($app['file']) . '/metadata.properties';
-        file_put_contents($metadata, "protected=true\n");
+        $metadata = dirname($app['file']) . '/metadata.json';
+        file_put_contents($metadata, "{\"protected\":true}\n");
         $protected = array_column($this->store->catalog(), null, 'id')[$app['id']];
         $this->assertTrue($protected['protected']);
         $html = view('partials/app_card', [
@@ -277,10 +299,10 @@ final class AppCategoryTest extends CIUnitTestCase
             1,
             $xpath->query('//div[contains(concat(" ", normalize-space(@class), " "), " tags ")]'
                 . '/span[normalize-space(.)="Running"]/following-sibling::span'
-                . '[@class="tag is-info is-light" and normalize-space(.)="Protected"]')->length,
+                . '[@class="tag is-success is-light" and normalize-space(.)="Protected"]')->length,
         );
 
-        file_put_contents($metadata, "protected=false\n");
+        file_put_contents($metadata, "{\"protected\":false}\n");
         $unprotected = array_column($this->store->catalog(), null, 'id')[$app['id']];
         $this->assertFalse($unprotected['protected']);
         $html = view('partials/app_card', [
@@ -299,7 +321,7 @@ final class AppCategoryTest extends CIUnitTestCase
 
     public function testInvalidProtectionMetadataIsRejected(): void
     {
-        file_put_contents(dirname($this->apps['First']['file']) . '/metadata.properties', "protected=yes\n");
+        file_put_contents(dirname($this->apps['First']['file']) . '/metadata.json', "{\"protected\":\"yes\"}\n");
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('protected must be true or false');
         $this->store->catalog();
@@ -613,6 +635,87 @@ final class AppCategoryTest extends CIUnitTestCase
             $this->store->install($this->apps[$name]);
         }
         $this->assertCount(3, file($this->directory . '/calls'));
+    }
+
+    public function testDependenciesStartBeforeTheApplication(): void
+    {
+        $this->writeDependencies('Unlimited', [
+            ['name' => 'reader', 'category' => 'books', 'required' => true],
+        ]);
+        $this->store->install($this->apps['Unlimited']);
+        $this->assertSame(
+            [$this->apps['Reader']['project'], $this->apps['Unlimited']['project']],
+            $this->composeProjects(),
+        );
+    }
+
+    public function testDependenciesStartRecursively(): void
+    {
+        $this->writeDependencies('First', [
+            ['name' => 'player', 'category' => 'video', 'required' => true],
+        ]);
+        $this->writeDependencies('Unlimited', [
+            ['name' => 'first', 'category' => 'files', 'required' => true],
+        ]);
+        $this->store->install($this->apps['Unlimited']);
+        $this->assertSame([
+            $this->apps['Player']['project'],
+            $this->apps['First']['project'],
+            $this->apps['Unlimited']['project'],
+        ], $this->composeProjects());
+    }
+
+    public function testMissingRequiredDependencyPreventsStart(): void
+    {
+        $this->writeDependencies('Unlimited', [
+            ['name' => 'missing', 'category' => 'files', 'required' => true],
+        ]);
+        try {
+            $this->store->install($this->apps['Unlimited']);
+            $this->fail('A missing required dependency must prevent startup.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString(
+                'Required dependency missing in category files is not available for Unlimited.',
+                $exception->getMessage(),
+            );
+        }
+        $this->assertFileDoesNotExist($this->directory . '/calls');
+    }
+
+    public function testOptionalDependenciesStartOnlyWhenAvailable(): void
+    {
+        $this->writeDependencies('Unlimited', [
+            ['name' => 'missing', 'category' => 'files', 'required' => false],
+            ['name' => 'reader', 'category' => 'books', 'required' => false],
+        ]);
+        $this->store->install($this->apps['Unlimited']);
+        $this->assertSame(
+            [$this->apps['Reader']['project'], $this->apps['Unlimited']['project']],
+            $this->composeProjects(),
+        );
+    }
+
+    public function testRunningDependencyIsNotStartedAgain(): void
+    {
+        putenv('CATEGORY_TEST_PROJECT=' . $this->apps['Reader']['project']);
+        $this->writeDependencies('Unlimited', [
+            ['name' => 'reader', 'category' => 'books', 'required' => true],
+        ]);
+        $this->store->install($this->apps['Unlimited']);
+        $this->assertSame([$this->apps['Unlimited']['project']], $this->composeProjects());
+    }
+
+    public function testCircularDependenciesAreRejected(): void
+    {
+        $this->writeDependencies('First', [
+            ['name' => 'reader', 'category' => 'books', 'required' => true],
+        ]);
+        $this->writeDependencies('Reader', [
+            ['name' => 'first', 'category' => 'files', 'required' => true],
+        ]);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Circular app dependency detected for First.');
+        $this->store->install($this->apps['First']);
     }
 
     public function testLifecycleLoadsAdjacentEnvironmentForComposeInterpolation(): void
