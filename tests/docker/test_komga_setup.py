@@ -8,7 +8,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 
 
-SOURCE = Path(__file__).resolve().parents[2] / "apps/singleton/books/komga"
+SOURCE = Path(__file__).resolve().parents[2] / "apps/books/komga"
 
 
 def load(name, filename):

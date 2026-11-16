@@ -188,7 +188,7 @@
 
     const appActionForms = document.querySelectorAll('form[data-pending-label]');
     appActionForms.forEach((form) => {
-        const configureButton = form.querySelector('[data-configure-app]');
+        const configureButton = form.querySelector('[data-deploy-app], [data-configure-app]');
         const modal = form.querySelector('.modal');
         const closeModal = () => {
             if (modal === null) {
@@ -263,6 +263,19 @@
                 }
                 modal.querySelectorAll('button').forEach((action) => { action.disabled = false; });
             }
+        });
+    });
+
+    document.querySelectorAll('[data-navbar-burger]').forEach((burger) => {
+        const menu = document.getElementById(burger.getAttribute('aria-controls'));
+        if (menu === null) {
+            return;
+        }
+        burger.addEventListener('click', () => {
+            const expanded = burger.getAttribute('aria-expanded') === 'true';
+            burger.setAttribute('aria-expanded', String(!expanded));
+            burger.classList.toggle('is-active', !expanded);
+            menu.classList.toggle('is-active', !expanded);
         });
     });
 

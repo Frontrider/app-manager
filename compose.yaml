@@ -59,8 +59,7 @@ services:
       ldap_timeout: "${LDAP_TIMEOUT:-5}"
       ldap_sessionLifetime: "${SESSION_LIFETIME:-3600}"
 
-      # singleton/<category>/<app>: one running app per category.
-      # standard categories have no exclusivity limit.
+      # Apps are declared with singleton-tags in metadata.json: one running app per tag.
       APPS_DIR: /apps
       DOCKER_BIN: /usr/local/bin/docker
       DOCKER_HOST: unix:///var/run/docker.sock

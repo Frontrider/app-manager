@@ -26,10 +26,10 @@ for app in "$@"; do
         ioquake3) port= ;;
         *) echo "Unknown locally built game: $app" >&2; exit 1 ;;
     esac
-    docker build --quiet -t "$prefix" "apps/standard/games/$app" >/dev/null
+    docker build --quiet -t "$prefix" "apps/games/$app" >/dev/null
     docker network create "$prefix" >/dev/null
     docker run -d --name "$prefix" --network "$prefix" \
-        --env-file "apps/standard/games/$app/env" \
+        --env-file "apps/games/$app/env" \
         -e JAVA_SERVER_HOST=127.0.0.1 -e JAVA_SERVER_PORT=25565 -e AUTH_TYPE=online \
         "$prefix" >/dev/null
     ready=false

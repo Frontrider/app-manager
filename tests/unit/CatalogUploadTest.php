@@ -38,7 +38,7 @@ final class CatalogUploadTest extends CIUnitTestCase
     public function testZipStructurePersistsAndDoesNotReadComposeForConfiguration(): void
     {
         $name = 'uploaded-' . bin2hex(random_bytes(8));
-        $relative = 'standard/sharing/' . $name;
+        $relative = 'sharing/' . $name;
         $zip = new ZipArchive();
         $this->assertTrue($zip->open($this->archive, ZipArchive::OVERWRITE));
         $zip->addFromString('apps/' . $relative . '/compose.yaml', 'Compose contents are not parsed during upload.');
@@ -50,7 +50,7 @@ final class CatalogUploadTest extends CIUnitTestCase
         $store = new ApplicationModel();
         $this->assertSame(1, $store->importCatalog($this->archive));
         $app = $store->find(hash('sha256', $relative . '/compose.yaml'));
-        $this->importedDirectory = dirname($app['file'], 4);
+        $this->importedDirectory = dirname($app['file'], 3);
         $this->assertStringStartsWith(WRITEPATH . 'catalog/', $this->importedDirectory);
         $this->assertSame('sharing', $store->category($app));
         $this->assertSame('12345', $store->environmentFields($app)['SERVER_PORT']['value']);
@@ -65,7 +65,7 @@ final class CatalogUploadTest extends CIUnitTestCase
     {
         $zip = new ZipArchive();
         $zip->open($this->archive, ZipArchive::OVERWRITE);
-        $zip->addFromString('standard/sharing/app/../../../../escape', 'unsafe');
+        $zip->addFromString('sharing/app/../../../../escape', 'unsafe');
         $zip->close();
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('unsafe paths');
@@ -76,8 +76,8 @@ final class CatalogUploadTest extends CIUnitTestCase
     {
         $zip = new ZipArchive();
         $zip->open($this->archive, ZipArchive::OVERWRITE);
-        $zip->addFromString('standard/sharing/app/link', '/etc/passwd');
-        $zip->setExternalAttributesName('standard/sharing/app/link', ZipArchive::OPSYS_UNIX, 0120777 << 16);
+        $zip->addFromString('sharing/app/link', '/etc/passwd');
+        $zip->setExternalAttributesName('sharing/app/link', ZipArchive::OPSYS_UNIX, 0120777 << 16);
         $zip->close();
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('not links');

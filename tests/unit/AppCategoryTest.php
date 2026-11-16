@@ -22,10 +22,21 @@ final class AppCategoryTest extends CIUnitTestCase
             'CATEGORY_TEST_OPERATION'] as $name) {
             $this->environment[$name] = getenv($name);
         }
-        foreach (['singleton/files/first', 'singleton/files/second', 'singleton/video/player',
-            'singleton/books/reader', 'standard/files/unlimited'] as $path) {
+        foreach (['files/first', 'files/second', 'video/player',
+            'books/reader', 'files/unlimited'] as $path) {
             mkdir($this->directory . '/' . $path, 0777, true);
             file_put_contents($this->directory . '/' . $path . '/compose.yaml', "services: {}\n");
+        }
+        foreach ([
+            'files/first' => ['files'],
+            'files/second' => ['files'],
+            'video/player' => ['video'],
+            'books/reader' => ['books'],
+        ] as $path => $tags) {
+            file_put_contents(
+                $this->directory . '/' . $path . '/metadata.json',
+                json_encode(['singleton-tags' => $tags], JSON_THROW_ON_ERROR),
+            );
         }
         putenv('APPS_DIR=' . $this->directory);
         putenv('DOCKER_BIN=' . ROOTPATH . 'tests/_support/Fixtures/category-docker.php');
@@ -49,6 +60,10 @@ final class AppCategoryTest extends CIUnitTestCase
             $failure = WRITEPATH . 'app-startup-failures/' . $app['id'] . '.log';
             if (is_file($failure)) {
                 unlink($failure);
+            }
+            $deployment = WRITEPATH . 'app-deployment-logs/' . $app['id'] . '.log';
+            if (is_file($deployment)) {
+                unlink($deployment);
             }
             foreach (['starting', 'stopping'] as $state) {
                 $operation = WRITEPATH . 'app-operations/' . $app['id'] . '.' . $state;
@@ -82,6 +97,118 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->assertSame(
             [$this->apps['Second']['id'] => 'First'],
             $this->store->installationBlocks($apps, $running),
+        );
+    }
+
+    public function testSingletonTagsAreReadFromMetadata(): void
+    {
+        $this->assertSame(['files'], $this->apps['First']['singletonTags']);
+        $this->assertSame(['files'], $this->apps['Second']['singletonTags']);
+        $this->assertSame(['video'], $this->apps['Player']['singletonTags']);
+        $this->assertSame([], $this->apps['Unlimited']['singletonTags']);
+    }
+
+    public function testInvalidSingletonTagsMetadataIsRejected(): void
+    {
+        file_put_contents(dirname($this->apps['First']['file']) . '/metadata.json', "{\"singleton-tags\":\"files\"}\n");
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('singleton-tags must be a list of strings');
+        $this->store->catalog();
+    }
+
+    public function testDuplicateSingletonTagsMetadataIsRejected(): void
+    {
+        file_put_contents(dirname($this->apps['First']['file']) . '/metadata.json', "{\"singleton-tags\":[\"files\",\"files\"]}\n");
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('singleton-tags must not contain duplicates');
+        $this->store->catalog();
+    }
+
+    public function testDeploymentBlocksListsAppsThatWouldBecomeUnavailable(): void
+    {
+        $apps = array_values($this->apps);
+        $running = array_fill_keys(array_column($apps, 'id'), false);
+        $running[$this->apps['Unlimited']['id']] = true;
+
+        $this->assertSame(
+            [$this->apps['Second']['id'] => 'Second'],
+            $this->store->deploymentBlocks($this->apps['First'], $apps, $running),
+        );
+        $this->assertSame([], $this->store->deploymentBlocks($this->apps['Player'], $apps, $running));
+        $this->assertSame([], $this->store->deploymentBlocks($this->apps['Unlimited'], $apps, $running));
+    }
+
+    public function testDeployDialogListsApplicationsThatWillBeBlocked(): void
+    {
+        $html = view('partials/app_card', [
+            'app' => $this->apps['First'],
+            'isRunning' => false,
+            'canManage' => true,
+            'wouldBlock' => ['Second'],
+        ]);
+        $this->assertStringContainsString('Applications that will be blocked', $html);
+        $this->assertStringContainsString('<li>Second</li>', $html);
+        $this->assertStringContainsString('data-deploy-app', $html);
+        $this->assertStringContainsString('data-deploy-confirm', $html);
+
+        $empty = view('partials/app_card', [
+            'app' => $this->apps['Second'],
+            'isRunning' => false,
+            'canManage' => true,
+            'wouldBlock' => [],
+        ]);
+        $this->assertStringContainsString('No other applications share a singleton tag', $empty);
+
+        $tagged = view('partials/app_card', [
+            'app' => $this->apps['First'],
+            'isRunning' => false,
+            'canManage' => true,
+            'wouldBlock' => [],
+        ]);
+        $this->assertStringContainsString('data-deploy-app', $tagged);
+
+        $plain = view('partials/app_card', [
+            'app' => $this->apps['Unlimited'],
+            'isRunning' => false,
+            'canManage' => true,
+            'wouldBlock' => [],
+        ]);
+        $this->assertStringNotContainsString('class="modal"', $plain);
+        $this->assertStringNotContainsString('data-deploy-app', $plain);
+        $this->assertStringContainsString('type="submit"', $plain);
+    }
+
+    public function testCatalogPassesBlockedApplicationsToTheDeployDialog(): void
+    {
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('/category/files');
+        $result->assertStatus(200);
+        $html = $result->response()->getBody();
+        $this->assertStringContainsString('Applications that will be blocked', $html);
+        $this->assertStringContainsString('<li>Second</li>', $html);
+        $this->assertStringContainsString('<li>First</li>', $html);
+    }
+
+    public function testHeaderUsesNavbarAndRunningCountLinksToActivity(): void
+    {
+        putenv('CATEGORY_TEST_PROJECT=' . $this->apps['First']['project']);
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('/');
+        $result->assertStatus(200);
+        $document = new DOMDocument();
+        @$document->loadHTML($result->response()->getBody());
+        $xpath = new DOMXPath($document);
+        $nav = $xpath->query('//nav[contains(concat(" ", normalize-space(@class), " "), " navbar ")]');
+        $this->assertSame(1, $nav->length);
+        $this->assertSame(1, $xpath->query('//nav//a[normalize-space(.)="Catalog"]')->length);
+        $count = $xpath->query('//main//a[contains(@href, "/activity")]');
+        $this->assertSame(1, $count->length);
+        $this->assertStringContainsString('1 running', $count->item(0)->textContent);
+        $this->assertSame(
+            'Open application activity: 1 running',
+            $count->item(0)->getAttribute('aria-label'),
         );
     }
 
@@ -327,6 +454,51 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->store->catalog();
     }
 
+    public function testMetadataRecommendationIsDisplayedBesideRuntimeStatus(): void
+    {
+        $app = $this->apps['First'];
+        $metadata = dirname($app['file']) . '/metadata.json';
+        file_put_contents($metadata, "{\"recommended\":true}\n");
+        $recommended = array_column($this->store->catalog(), null, 'id')[$app['id']];
+        $this->assertTrue($recommended['recommended']);
+        $html = view('partials/app_card', [
+            'app' => $recommended, 'isRunning' => true, 'canManage' => false,
+        ]);
+        $document = new DOMDocument();
+        @$document->loadHTML($html);
+        $xpath = new DOMXPath($document);
+        $this->assertSame(
+            1,
+            $xpath->query('//div[contains(concat(" ", normalize-space(@class), " "), " tags ")]'
+                . '/span[normalize-space(.)="Running"]/following-sibling::span'
+                . '[@class="tag is-info is-light" and normalize-space(.)="Recommended"]')->length,
+        );
+
+        file_put_contents($metadata, "{\"recommended\":false}\n");
+        $notRecommended = array_column($this->store->catalog(), null, 'id')[$app['id']];
+        $this->assertFalse($notRecommended['recommended']);
+        $html = view('partials/app_card', [
+            'app' => $notRecommended, 'isRunning' => false, 'canManage' => false,
+        ]);
+        @$document->loadHTML($html);
+        $xpath = new DOMXPath($document);
+        $this->assertSame(1, $xpath->query('//div[contains(concat(" ", normalize-space(@class), " "), " tags ")]'
+            . '/span[normalize-space(.)="Stopped"]')->length);
+        $this->assertSame(0, $xpath->query('//span[normalize-space(.)="Recommended"]')->length);
+
+        unlink($metadata);
+        $withoutMetadata = array_column($this->store->catalog(), null, 'id')[$app['id']];
+        $this->assertFalse($withoutMetadata['recommended']);
+    }
+
+    public function testInvalidRecommendedMetadataIsRejected(): void
+    {
+        file_put_contents(dirname($this->apps['First']['file']) . '/metadata.json', "{\"recommended\":\"yes\"}\n");
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('recommended must be true or false');
+        $this->store->catalog();
+    }
+
     public function testAppReadmeIsUsedAsAnEscapedDescription(): void
     {
         $app = $this->apps['First'];
@@ -483,6 +655,34 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->assertSame('No containers exist for this app yet.', $this->store->logs($this->apps['First']));
     }
 
+    public function testDeploymentOutputIsShownWhileStartupIsInProgress(): void
+    {
+        $app = $this->apps['First'];
+        $directory = WRITEPATH . 'app-deployment-logs';
+        if (! is_dir($directory)) {
+            mkdir($directory, 0700, true);
+        }
+        file_put_contents($directory . '/' . $app['id'] . '.log', "Pulling image layers...\n");
+
+        $operations = WRITEPATH . 'app-operations';
+        if (! is_dir($operations)) {
+            mkdir($operations, 0700, true);
+        }
+        $handle = fopen($operations . '/' . $app['id'] . '.starting', 'c');
+        $this->assertTrue(flock($handle, LOCK_EX));
+        try {
+            $logs = $this->store->logs($app);
+            $this->assertStringContainsString('Deployment output', $logs);
+            $this->assertStringContainsString('Pulling image layers...', $logs);
+            $this->assertStringContainsString('No containers exist for this app yet.', $logs);
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+
+        $this->assertStringNotContainsString('Pulling image layers...', $this->store->logs($app));
+    }
+
     public function testStartupFailurePersistsWithoutContainersAndClearsAfterSuccess(): void
     {
         $app = $this->apps['First'];
@@ -496,11 +696,14 @@ final class AppCategoryTest extends CIUnitTestCase
         $logs = (new ApplicationModel())->logs($app);
         $this->assertStringContainsString('Startup failed at ', $logs);
         $this->assertStringContainsString('simulated failure', $logs);
+        $this->assertStringContainsString('Deployment output', $logs);
         $this->assertStringContainsString('No containers exist for this app yet.', $logs);
         $this->assertSame(0600, fileperms(WRITEPATH . 'app-startup-failures/' . $app['id'] . '.log') & 0777);
+        $this->assertSame(0600, fileperms(WRITEPATH . 'app-deployment-logs/' . $app['id'] . '.log') & 0777);
         putenv('CATEGORY_TEST_VERBOSE');
         $this->store->install($app);
         $this->assertStringNotContainsString('Startup failed', $this->store->logs($app));
+        $this->assertStringNotContainsString('Deployment output', $this->store->logs($app));
     }
 
     public function testStartupFailureRemainsVisibleWhenContainerLogsFail(): void
@@ -601,15 +804,15 @@ final class AppCategoryTest extends CIUnitTestCase
         $store = new ApplicationModel();
         $apps = array_column($store->catalog(), null, 'path');
         $paths = [
-            'singleton/files/copyparty/docker-compose.yaml',
-            'singleton/files/sftpgo/docker-compose.yaml',
-            'singleton/files/tiny-file-manager/docker-compose.yaml',
+            'file-manager/copyparty/docker-compose.yaml',
+            'file-manager/sftpgo/docker-compose.yaml',
+            'file-manager/tiny-file-manager/docker-compose.yaml',
         ];
         $running = array_fill_keys(array_column($apps, 'id'), false);
         $running[$apps[$paths[0]]['id']] = true;
         $blocks = $store->installationBlocks(array_values($apps), $running);
         foreach (array_slice($paths, 1) as $path) {
-            $this->assertSame('files', $store->category($apps[$path]));
+            $this->assertSame('file-manager', $store->category($apps[$path]));
             $this->assertSame('Copyparty', $blocks[$apps[$path]['id']]);
             $this->assertNotNull($apps[$path]['website']);
             $this->assertStringStartsWith('/files/', $apps[$path]['caddyPath']);
@@ -623,7 +826,7 @@ final class AppCategoryTest extends CIUnitTestCase
             $this->store->install($this->apps['Second']);
             $this->fail('Installation should be blocked.');
         } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('First is already running in the files category', $exception->getMessage());
+            $this->assertStringContainsString('First is already running with the "files" singleton tag', $exception->getMessage());
         }
         $this->assertFileDoesNotExist($this->directory . '/calls');
     }
@@ -875,7 +1078,7 @@ final class AppCategoryTest extends CIUnitTestCase
         $result->assertStatus(200);
         $html = $result->response()->getBody();
         $this->assertStringContainsString('<h2 class="title is-4">Files</h2>', $html);
-        $this->assertStringContainsString('Stop First to use another app in this category.', $html);
+        $this->assertStringContainsString('Deployment blocked by <strong>First.</strong>', $html);
         $document = new DOMDocument();
         @$document->loadHTML($html);
         $xpath = new DOMXPath($document);

@@ -15,9 +15,9 @@ docker network create "$prefix" >/dev/null
 for volume in books videos komga jellyfin env; do
     docker volume create "$prefix-$volume" >/dev/null
 done
-docker build --quiet -t "$prefix-komga-setup" apps/singleton/books/komga >/dev/null
-docker build --quiet --target library -t "$prefix-jellyfin-setup" apps/singleton/video/jelylfin >/dev/null
-docker build --quiet --target init -t "$prefix-jellyfin-init" apps/singleton/video/jelylfin >/dev/null
+docker build --quiet -t "$prefix-komga-setup" apps/books/komga >/dev/null
+docker build --quiet --target library -t "$prefix-jellyfin-setup" apps/video/jelylfin >/dev/null
+docker build --quiet --target init -t "$prefix-jellyfin-init" apps/video/jelylfin >/dev/null
 docker run --rm -v "$prefix-books:/data" -v "$prefix-komga:/config" alpine:3.22 sh -ec \
     'mkdir -p /data/books; chown 1000:1000 /data/books /config'
 docker run --rm -v "$prefix-env:/global-env" alpine:3.22 sh -ec \

@@ -3,8 +3,8 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$root"
-books=apps/singleton/books/komga/docker-compose.yaml
-videos=apps/singleton/video/jelylfin/docker-compose.yaml
+books=apps/books/komga/docker-compose.yaml
+videos=apps/video/jelylfin/docker-compose.yaml
 export DATA_VOLUME="app-manager-media-smoke-$$"
 export GLOBAL_ENV_VOLUME="app-manager-media-env-smoke-$$"
 books_project="app-manager-books-smoke-$$"

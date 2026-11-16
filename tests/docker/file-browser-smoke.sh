@@ -18,8 +18,8 @@ trap cleanup EXIT
 for volume in data state env; do
     docker volume create "$prefix-$volume" >/dev/null
 done
-docker build --quiet -t "$prefix-tiny" apps/singleton/files/tiny-file-manager >/dev/null
-docker build --quiet -t "$prefix-sftpgo" apps/singleton/files/sftpgo >/dev/null
+docker build --quiet -t "$prefix-tiny" apps/file-manager/tiny-file-manager >/dev/null
+docker build --quiet -t "$prefix-sftpgo" apps/file-manager/sftpgo >/dev/null
 docker run --rm -v "$prefix-data:/data" -v "$prefix-state:/state" -v "$prefix-env:/env" alpine:3.22 sh -ec '
     mkdir -p /data/books /data/videos /data/copyparty
     chown 1000:1000 /data/books /data/videos /data/copyparty /state

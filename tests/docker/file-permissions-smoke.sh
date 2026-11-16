@@ -14,9 +14,9 @@ for volume in data private outside; do
 done
 for app in copyparty sftpgo tiny-file-manager; do
     if [ "$app" = copyparty ]; then
-        docker build --quiet -t "$prefix-$app" "apps/singleton/files/$app" >/dev/null
+        docker build --quiet -t "$prefix-$app" "apps/file-manager/$app" >/dev/null
     else
-        docker build --quiet --target permissions -t "$prefix-$app" "apps/singleton/files/$app" >/dev/null
+        docker build --quiet --target permissions -t "$prefix-$app" "apps/file-manager/$app" >/dev/null
     fi
     docker run --rm -v "$prefix-data:/data" -v "$prefix-private:/private" \
         -v "$prefix-outside:/outside" alpine:3.22 sh -ec '

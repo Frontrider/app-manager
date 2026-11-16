@@ -1,0 +1,94 @@
+services:
+  nextcloud-init:
+    build:
+      context: .
+      dockerfile: init.Dockerfile
+    image: localhost-nextcloud-init:latest
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    environment:
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+    volumes:
+      - nextcloud_app:/app
+      - nextcloud_data:/data
+      - nextcloud_secrets:/run/secrets
+
+  nextcloud-db:
+    image: mariadb:11
+    restart: unless-stopped
+    depends_on:
+      nextcloud-init:
+        condition: service_completed_successfully
+    environment:
+      MARIADB_DATABASE: nextcloud
+      MARIADB_USER: nextcloud
+      MARIADB_PASSWORD_FILE: /run/secrets/nextcloud_db_password
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/nextcloud_db_root_password
+    volumes:
+      - nextcloud_db:/var/lib/mysql
+      - nextcloud_secrets:/run/secrets:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  nextcloud:
+    build:
+      context: .
+    image: localhost-nextcloud:latest
+    restart: unless-stopped
+    depends_on:
+      nextcloud-init:
+        condition: service_completed_successfully
+      nextcloud-db:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: nextcloud-db
+      MYSQL_DATABASE_FILE: /run/secrets/nextcloud_db_name
+      MYSQL_USER_FILE: /run/secrets/nextcloud_db_user
+      MYSQL_PASSWORD_FILE: /run/secrets/nextcloud_db_password
+      NEXTCLOUD_DATA_DIR: /var/www/html/data
+      APACHE_DISABLE_REWRITE_IP: "1"
+    volumes:
+      - nextcloud_app:/var/www/html
+      - nextcloud_data:/var/www/html/data
+      - nextcloud_secrets:/run/secrets:ro
+      - global-env:/global-env:ro
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://127.0.0.1/status.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - internal
+    labels:
+      - "caddy=:90"
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.8_redir=/nextcloud /nextcloud/ permanent"
+      - "caddy.8_handle_path=/nextcloud/*"
+      - "caddy.8_handle_path.0_reverse_proxy={{upstreams 80}}"
+      - "caddy.8_handle_path.0_reverse_proxy.header_up=Accept-Encoding identity"
+
+volumes:
+  nextcloud_app:
+    driver: local
+  nextcloud_data:
+    driver: local
+  nextcloud_db:
+    driver: local
+  nextcloud_secrets:
+    driver: local
+  global-env:
+    external: true
+    name: "${GLOBAL_ENV_VOLUME:-localhost_global_env}"
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

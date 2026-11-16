@@ -1,0 +1,7 @@
+{
+  "website": "https://github.com/9001/copyparty",
+  "caddy_path": "/files/",
+  "singleton-tags": ["file-manager","webdav"],
+  "protected": true,
+  "recommended": true
+}

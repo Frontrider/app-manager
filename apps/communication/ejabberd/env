@@ -1,0 +1,3 @@
+# Password for the ejabberd administrator account (admin@<domain>).
+# Use letters, numbers, and . _ ~ + / = @ -; avoid spaces and shell metacharacters.
+ADMIN_PASSWORD=

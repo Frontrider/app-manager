@@ -27,7 +27,7 @@ class ApplicationModel
     }
 
     /**
-     * @return list<array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}>
+     * @return list<array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, recommended: bool, singletonTags: list<string>, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}>
      */
     public function catalog(): array
     {
@@ -67,6 +67,8 @@ class ApplicationModel
                     'website' => $metadata['website'],
                     'caddyPath' => $metadata['caddyPath'],
                     'protected' => $metadata['protected'],
+                    'recommended' => $metadata['recommended'],
+                    'singletonTags' => $metadata['singletonTags'],
                     'dependencies' => $metadata['dependencies'],
                     'description' => $this->description(dirname($path)),
                 ];
@@ -124,7 +126,7 @@ class ApplicationModel
     }
 
     /**
-     * @param list<array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}> $apps
+     * @param list<array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, recommended: bool, singletonTags: list<string>, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}> $apps
      * @return array<string, bool>
      */
     public function runningApps(array $apps): array
@@ -246,7 +248,7 @@ class ApplicationModel
     }
 
     /**
-     * @return array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}
+     * @return array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, recommended: bool, singletonTags: list<string>, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string}
      */
     public function find(string $id): array
     {
@@ -261,46 +263,40 @@ class ApplicationModel
 
     public function category(array $app): string
     {
-        $singleton = $this->singletonCategory($app);
-        if ($singleton !== null) {
-            return $singleton;
-        }
-
         $parts = explode('/', str_replace('\\', '/', $app['path']));
 
         $folders = array_slice($parts, 0, -2);
-        if (($folders[0] ?? null) === 'standard') {
-            array_shift($folders);
-        }
 
         return $folders === [] ? 'General' : implode(' / ', $folders);
     }
 
-    private function singletonCategory(array $app): ?string
-    {
-        $parts = explode('/', str_replace('\\', '/', $app['path']));
-
-        return $parts[0] === 'singleton' && count($parts) >= 3 ? $parts[1] : null;
-    }
-
     /**
+     * Running apps that share at least one singleton tag with another app.
+     *
      * @return array<string, string> App IDs mapped to the running app blocking installation.
      */
     public function installationBlocks(array $apps, array $running): array
     {
         $occupied = [];
         foreach ($apps as $app) {
-            $category = $this->singletonCategory($app);
-            if ($category !== null && $running[$app['id']]) {
-                $occupied[$category] = $app['name'];
+            if (! ($running[$app['id']] ?? false)) {
+                continue;
+            }
+            foreach ($app['singletonTags'] ?? [] as $tag) {
+                $occupied[$tag] ??= $app['name'];
             }
         }
 
         $blocked = [];
         foreach ($apps as $app) {
-            $category = $this->singletonCategory($app);
-            if ($category !== null && ! $running[$app['id']] && isset($occupied[$category])) {
-                $blocked[$app['id']] = $occupied[$category];
+            if ($running[$app['id']] ?? false) {
+                continue;
+            }
+            foreach ($app['singletonTags'] ?? [] as $tag) {
+                if (isset($occupied[$tag])) {
+                    $blocked[$app['id']] = $occupied[$tag];
+                    break;
+                }
             }
         }
 
@@ -308,10 +304,64 @@ class ApplicationModel
     }
 
     /**
+     * Apps that would become undeployable if the given app were started.
+     *
+     * @param list<array> $apps
+     * @param array<string, bool> $running
+     * @return array<string, string> App IDs mapped to the names that would be blocked.
+     */
+    public function deploymentBlocks(array $app, array $apps, array $running): array
+    {
+        $tags = $app['singletonTags'] ?? [];
+        if ($tags === []) {
+            return [];
+        }
+
+        $blocked = [];
+        foreach ($apps as $candidate) {
+            if ($candidate['id'] === $app['id'] || ($running[$candidate['id']] ?? false)) {
+                continue;
+            }
+            if (array_intersect($tags, $candidate['singletonTags'] ?? []) !== []) {
+                $blocked[$candidate['id']] = $candidate['name'];
+            }
+        }
+
+        return $blocked;
+    }
+
+    /**
+     * @param list<array> $apps
+     * @param array<string, bool> $running
+     */
+    private function blockingTag(array $app, array $apps, array $running): ?string
+    {
+        $occupied = [];
+        foreach ($apps as $candidate) {
+            if (! ($running[$candidate['id']] ?? false)) {
+                continue;
+            }
+            foreach ($candidate['singletonTags'] ?? [] as $tag) {
+                $occupied[$tag] = true;
+            }
+        }
+
+        foreach ($app['singletonTags'] ?? [] as $tag) {
+            if (isset($occupied[$tag])) {
+                return $tag;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @return array{
      *     website: ?string,
      *     caddyPath: ?string,
      *     protected: bool,
+     *     recommended: bool,
+     *     singletonTags: list<string>,
      *     dependencies: list<array{name: string, category: string, required: bool}>
      * }
      */
@@ -323,6 +373,8 @@ class ApplicationModel
                 'website' => null,
                 'caddyPath' => null,
                 'protected' => false,
+                'recommended' => false,
+                'singletonTags' => [],
                 'dependencies' => [],
             ];
         }
@@ -355,6 +407,10 @@ class ApplicationModel
         if (! is_bool($protected)) {
             throw new RuntimeException('App metadata protected must be true or false: ' . $file);
         }
+        $recommended = $metadata['recommended'] ?? false;
+        if (! is_bool($recommended)) {
+            throw new RuntimeException('App metadata recommended must be true or false: ' . $file);
+        }
         if ($website !== null && (! is_string($website)
             || filter_var($website, FILTER_VALIDATE_URL) === false
             || ! in_array(parse_url($website, PHP_URL_SCHEME), ['https', 'http'], true))) {
@@ -372,8 +428,40 @@ class ApplicationModel
             'website' => $website,
             'caddyPath' => $caddyPath,
             'protected' => $protected,
+            'recommended' => $recommended,
+            'singletonTags' => $this->metadataSingletonTags($metadata['singleton-tags'] ?? [], $file),
             'dependencies' => $this->metadataDependencies($metadata['dependencies'] ?? [], $file),
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function metadataSingletonTags(mixed $tags, string $file): array
+    {
+        if (! is_array($tags) || ! array_is_list($tags)) {
+            throw new RuntimeException('App metadata singleton-tags must be a list of strings: ' . $file);
+        }
+
+        $parsed = [];
+        foreach ($tags as $tag) {
+            if (! is_string($tag)) {
+                throw new RuntimeException('App metadata singleton-tags must contain strings: ' . $file);
+            }
+            $tag = trim($tag);
+            if ($tag === '') {
+                throw new RuntimeException('App metadata singleton-tags must not be empty: ' . $file);
+            }
+            if (preg_match('/[\x00-\x1f\x7f]/', $tag)) {
+                throw new RuntimeException('App metadata singleton-tags must not contain control characters: ' . $file);
+            }
+            if (in_array($tag, $parsed, true)) {
+                throw new RuntimeException('App metadata singleton-tags must not contain duplicates: ' . $file);
+            }
+            $parsed[] = $tag;
+        }
+
+        return $parsed;
     }
 
     /**
@@ -420,7 +508,7 @@ class ApplicationModel
     }
 
     /**
-     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
+     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, recommended: bool, singletonTags: list<string>, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
      */
     public function headerFile(array $app): ?string
     {
@@ -444,7 +532,7 @@ class ApplicationModel
     }
 
     /**
-     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
+     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, recommended: bool, singletonTags: list<string>, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
      */
     public function install(array $app, ?array $environment = null): void
     {
@@ -511,23 +599,28 @@ class ApplicationModel
 
         $blocks = $this->installationBlocks($apps, $running);
         if (isset($blocks[$app['id']])) {
+            $tag = $this->blockingTag($app, $apps, $running);
+            $reason = $tag === null
+                ? 'a conflicting singleton tag'
+                : 'the "' . $tag . '" singleton tag';
             throw new RuntimeException(
-                $blocks[$app['id']] . ' is already running in the ' . $this->category($app)
-                . ' category. Stop it before starting ' . $app['name'] . '.',
+                $blocks[$app['id']] . ' is already running with ' . $reason
+                . '. Stop it before starting ' . $app['name'] . '.',
             );
         }
 
         $this->withAppOperation($app, 'Starting', function () use ($app, $environment, $refresh): void {
             try {
+                $this->resetDeploymentLog($app);
                 if ($environment !== null) {
                     $this->saveEnvironment($app, $environment);
                 }
                 if ($refresh) {
-                    $this->compose($app, 'pull', '--ignore-buildable');
-                    $this->compose($app, 'build', '--pull', '--no-cache');
-                    $this->compose($app, 'up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans');
+                    $this->compose($app, true, 'pull', '--ignore-buildable');
+                    $this->compose($app, true, 'build', '--pull', '--no-cache');
+                    $this->compose($app, true, 'up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans');
                 } else {
-                    $this->compose($app, 'up', '-d');
+                    $this->compose($app, true, 'up', '-d');
                 }
             } catch (RuntimeException $exception) {
                 try {
@@ -590,12 +683,12 @@ class ApplicationModel
     }
 
     /**
-     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
+     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, recommended: bool, singletonTags: list<string>, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
      */
     public function uninstall(array $app): void
     {
         $this->withLock(fn () => $this->withAppOperation(
-            $app, 'Stopping', fn () => $this->compose($app, 'stop'),
+            $app, 'Stopping', fn () => $this->compose($app, false, 'stop'),
         ));
     }
 
@@ -608,7 +701,7 @@ class ApplicationModel
             $this->withAppOperation(
                 $app,
                 'Deleting',
-                fn () => $this->compose($app, 'down', '--volumes', '--remove-orphans'),
+                fn () => $this->compose($app, false, 'down', '--volumes', '--remove-orphans'),
             );
         });
     }
@@ -650,6 +743,15 @@ class ApplicationModel
             }
             $output = $contents . "\n\n";
         }
+
+        $deployment = $this->deploymentLogPath($app);
+        if (($output !== '' || $this->operationIsActive($app, 'Starting')) && is_file($deployment)) {
+            $contents = trim($this->readLogTail($deployment));
+            if ($contents !== '') {
+                $output .= "Deployment output\n" . $contents . "\n\n";
+            }
+        }
+
         try {
             return $output . $this->containerLogs($app);
         } catch (RuntimeException $exception) {
@@ -668,6 +770,82 @@ class ApplicationModel
         }
 
         return WRITEPATH . 'app-startup-failures/' . $app['id'] . '.log';
+    }
+
+    private function deploymentLogPath(array $app): string
+    {
+        if (! preg_match('/^[a-f0-9]{64}$/D', $app['id'])) {
+            throw new RuntimeException('Invalid app ID for deployment logs.');
+        }
+
+        return WRITEPATH . 'app-deployment-logs/' . $app['id'] . '.log';
+    }
+
+    private function resetDeploymentLog(array $app): void
+    {
+        $path = $this->deploymentLogPath($app);
+        $directory = dirname($path);
+        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+            throw new RuntimeException('Could not create the deployment logs directory.');
+        }
+        if (file_put_contents($path, '') === false) {
+            throw new RuntimeException('Could not reset the deployment log.');
+        }
+        if (! chmod($path, 0600)) {
+            throw new RuntimeException('Could not secure the deployment log.');
+        }
+    }
+
+    private function readLogTail(string $path, int $maxBytes = 262144): string
+    {
+        clearstatcache(true, $path);
+        $size = filesize($path);
+        if ($size === false) {
+            throw new RuntimeException('Could not read the deployment log size.');
+        }
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            throw new RuntimeException('Could not read the deployment log.');
+        }
+        try {
+            $offset = max(0, $size - $maxBytes);
+            if ($offset > 0 && fseek($handle, $offset) !== 0) {
+                throw new RuntimeException('Could not seek in the deployment log.');
+            }
+            $contents = stream_get_contents($handle);
+            if ($contents === false) {
+                throw new RuntimeException('Could not read the deployment log contents.');
+            }
+            if ($offset > 0) {
+                $newline = strpos($contents, "\n");
+                if ($newline !== false) {
+                    $contents = substr($contents, $newline + 1);
+                }
+            }
+
+            return $contents;
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    private function operationIsActive(array $app, string $status): bool
+    {
+        $path = $this->operationPath($app, $status);
+        if (! is_file($path)) {
+            return false;
+        }
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            return false;
+        }
+        try {
+            $locked = flock($handle, LOCK_SH | LOCK_NB, $wouldBlock);
+
+            return ! $locked && $wouldBlock;
+        } finally {
+            fclose($handle);
+        }
     }
 
     private function saveStartupFailure(array $app, string $message): void
@@ -722,9 +900,9 @@ class ApplicationModel
     }
 
     /**
-     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
+     * @param array{id: string, name: string, path: string, file: string, project: string, website: ?string, caddyPath: ?string, protected: bool, recommended: bool, singletonTags: list<string>, dependencies: list<array{name: string, category: string, required: bool}>, description: ?string} $app
      */
-    private function compose(array $app, string ...$arguments): void
+    private function compose(array $app, bool $logOutput, string ...$arguments): void
     {
         $command = [
             $this->dockerBinary,
@@ -739,9 +917,10 @@ class ApplicationModel
             array_push($command, '--env-file', $environment);
         }
 
+        $logFile = $logOutput ? $this->deploymentLogPath($app) : null;
         $saved = $this->savedEnvironmentPath($app);
         if ($environment === null || ! is_file($saved)) {
-            $this->run(array_merge($command, $arguments));
+            $this->run(array_merge($command, $arguments), null, false, $logFile);
             return;
         }
 
@@ -750,7 +929,7 @@ class ApplicationModel
         foreach ($this->environmentFields($app) as $name => $field) {
             $values[$name] = $field['value'];
         }
-        $this->run(array_merge($command, $arguments), $values);
+        $this->run(array_merge($command, $arguments), $values, false, $logFile);
     }
 
     private function environmentTemplate(array $app): ?string
@@ -814,13 +993,16 @@ class ApplicationModel
                         $parts = explode('/', $path);
                         if ($path === '' || preg_match('/[\x00-\x1f\x7f\\\\:]/', $path)
                             || array_intersect($parts, ['', '.', '..']) !== []
-                            || ! in_array($parts[0], ['standard', 'singleton'], true)) {
-                            throw new RuntimeException('ZIP paths must match the apps folder structure without unsafe paths.');
+                            || in_array($parts[0], ['standard', 'singleton'], true)) {
+                            throw new RuntimeException('ZIP paths must use category/app folders without unsafe paths.');
                         }
                         if (isset($entries[$path])) {
                             throw new RuntimeException('The ZIP contains a duplicate path: ' . $path);
                         }
                         $directory = str_ends_with($name, '/');
+                        if (! $directory && count($parts) < 3) {
+                            throw new RuntimeException('ZIP files must be inside a category/app folder.');
+                        }
                         $opsys = 0;
                         $attributes = 0;
                         if (! $zip->getExternalAttributesIndex($index, $opsys, $attributes)) {
@@ -896,7 +1078,7 @@ class ApplicationModel
                             || ! in_array(basename($path), ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'], true)) {
                             continue;
                         }
-                        if (count(explode('/', $path)) < 4 || isset($existing[$path])) {
+                        if (count(explode('/', $path)) < 3 || isset($existing[$path])) {
                             throw new RuntimeException('Uploaded apps need a category/app folder and must not replace existing catalog items.');
                         }
                         $projectName = trim(preg_replace('/[^a-z0-9_-]+/', '-', strtolower(basename(dirname($path)))), '-');
@@ -916,7 +1098,7 @@ class ApplicationModel
                         $count++;
                     }
                     if ($count === 0) {
-                        throw new RuntimeException('The ZIP has no catalog items. Include category/app/compose.yaml under standard or singleton.');
+                        throw new RuntimeException('The ZIP has no catalog items. Include category/app/compose.yaml.');
                     }
                     $catalog = WRITEPATH . 'catalog';
                     if (! is_dir($catalog) && ! mkdir($catalog, 0755)) {
@@ -1050,15 +1232,52 @@ class ApplicationModel
     /**
      * @param list<string> $command
      */
-    private function run(array $command, ?array $environment = null, bool $mergeOutput = false): string
-    {
+    private function run(
+        array $command,
+        ?array $environment = null,
+        bool $mergeOutput = false,
+        ?string $logFile = null,
+    ): string {
+        $logHandle = null;
+        $logErrorHandle = null;
+        if ($logFile !== null) {
+            $directory = dirname($logFile);
+            if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+                throw new RuntimeException('Could not create the deployment logs directory.');
+            }
+            $logHandle = fopen($logFile, 'ab');
+            $logErrorHandle = fopen($logFile, 'ab');
+            if ($logHandle === false || $logErrorHandle === false) {
+                if (is_resource($logHandle)) {
+                    fclose($logHandle);
+                }
+                if (is_resource($logErrorHandle)) {
+                    fclose($logErrorHandle);
+                }
+                throw new RuntimeException('Could not open the deployment log.');
+            }
+            fwrite($logHandle, '$ ' . implode(' ', $command) . "\n");
+        }
+
         $stdoutFile = tmpfile();
         if ($stdoutFile === false) {
+            if (is_resource($logHandle)) {
+                fclose($logHandle);
+            }
+            if (is_resource($logErrorHandle)) {
+                fclose($logErrorHandle);
+            }
             throw new RuntimeException('Could not create Docker output file.');
         }
         $stderrFile = tmpfile();
         if ($stderrFile === false) {
             fclose($stdoutFile);
+            if (is_resource($logHandle)) {
+                fclose($logHandle);
+            }
+            if (is_resource($logErrorHandle)) {
+                fclose($logErrorHandle);
+            }
             throw new RuntimeException('Could not create Docker error file.');
         }
 
@@ -1067,8 +1286,8 @@ class ApplicationModel
             // File-backed output cannot fill a pipe and deadlock a verbose image pull.
             $process = proc_open($command, [
                 0 => ['pipe', 'r'],
-                1 => $stdoutFile,
-                2 => $mergeOutput ? ['redirect', 1] : $stderrFile,
+                1 => $logHandle ?? $stdoutFile,
+                2 => $logHandle !== null ? $logErrorHandle : ($mergeOutput ? ['redirect', 1] : $stderrFile),
             ], $pipes, ROOTPATH, $environment === null ? null : array_replace(getenv(), $environment));
 
             if (! is_resource($process)) {
@@ -1076,6 +1295,12 @@ class ApplicationModel
             }
             fclose($pipes[0]);
             $status = proc_close($process);
+            if (is_resource($logHandle)) {
+                fflush($logHandle);
+            }
+            if (is_resource($logErrorHandle)) {
+                fflush($logErrorHandle);
+            }
             rewind($stdoutFile);
             rewind($stderrFile);
             $stdout = stream_get_contents($stdoutFile);
@@ -1086,14 +1311,31 @@ class ApplicationModel
         } finally {
             fclose($stdoutFile);
             fclose($stderrFile);
+            if (is_resource($logHandle)) {
+                fclose($logHandle);
+            }
+            if (is_resource($logErrorHandle)) {
+                fclose($logErrorHandle);
+            }
         }
 
         if ($status !== 0) {
-            $detail = trim($stderr !== '' ? $stderr : $stdout);
+            $detail = '';
+            if ($logFile !== null) {
+                try {
+                    $detail = trim($this->readLogTail($logFile, 16384));
+                } catch (RuntimeException $exception) {
+                    log_message('error', 'Could not read deployment log: {message}', [
+                        'message' => $exception->getMessage(),
+                    ]);
+                }
+            } else {
+                $detail = trim($stderr !== '' ? $stderr : $stdout);
+            }
             throw new RuntimeException($detail === '' ? 'Docker command failed.' : $detail);
         }
 
-        return $stdout;
+        return $logFile === null ? $stdout : '';
     }
 
     private function operationPath(array $app, string $status): string

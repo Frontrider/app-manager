@@ -1,0 +1,64 @@
+services:
+  dokuwiki-init:
+    image: alpine:3.22
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /storage/conf /storage/data /storage/lib/plugins /storage/lib/tpl
+        chown -R 1000:1000 /storage
+    volumes:
+      - dokuwiki_storage:/storage
+
+  dokuwiki:
+    build:
+      context: .
+    image: localhost-dokuwiki:latest
+    restart: unless-stopped
+    # The official image runs Apache as the given user; keep storage ownership aligned.
+    user: "1000:1000"
+    depends_on:
+      dokuwiki-init:
+        condition: service_completed_successfully
+    environment:
+      DOKUWIKI_TITLE: "${DOKUWIKI_TITLE:-DokuWiki}"
+      LDAP_HOST: "${LDAP_HOST:-core}"
+      LDAP_PORT: "${LDAP_PORT:-3890}"
+      LDAP_USER_BASE_DN: "${LDAP_USER_BASE_DN:-ou=people,dc=example,dc=com}"
+      LDAP_GROUP_BASE_DN: "${LDAP_GROUP_BASE_DN:-ou=groups,dc=example,dc=com}"
+      LDAP_SERVICE_DN: "${LDAP_SERVICE_DN:-}"
+      LDAP_ADMIN_GROUP: "${LDAP_ADMIN_GROUP:-lldap_admin}"
+      LDAP_START_TLS: "${LDAP_START_TLS:-false}"
+    volumes:
+      - dokuwiki_storage:/storage
+      - global-env:/global-env:ro
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail-with-body", "http://127.0.0.1:8080/health.php"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal
+    labels:
+      caddy: ':90'
+      caddy_ingress_network: "${CADDY_NETWORK:-localhost_internal}"
+      # DokuWiki generates URLs with its configured basedir, so strip the prefix upstream.
+      caddy.8_redir: '/dokuwiki /dokuwiki/ permanent'
+      caddy.8_handle_path: '/dokuwiki/*'
+      caddy.8_handle_path.0_reverse_proxy: '{{upstreams 8080}}'
+      caddy.8_handle_path.0_reverse_proxy.header_up: 'Accept-Encoding identity'
+
+volumes:
+  dokuwiki_storage:
+    driver: local
+  global-env:
+    external: true
+    name: "${GLOBAL_ENV_VOLUME:-localhost_global_env}"
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "apps/singleton/book-reader/calibre-web"
+SOURCE = ROOT / "apps/book-reader/calibre-web"
 
 
 def load(name):

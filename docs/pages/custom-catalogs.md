@@ -6,15 +6,17 @@ The catalog only contains what is needed to deploy the applications, but not the
 
 ### Structure
 
-the zip file's root contains 2 folders:
-- singleton
-- standard
+The ZIP root contains category folders, each holding application folders:
 
-Each folder has their categories as subfolders. These are arbitrary, used to group them on the sidebar.
+```
+apps/<category>/<app>/docker-compose.yaml
+```
 
-Singleton applications can only have one of them deployed at once. 
-These are things like file browsers, where having multiple versions of them could become a problem, or services with very similar purposes that are configured the same way.
-Eg: book readers, or video players that all get the same paths on the server.
+The `apps/` prefix is optional. Categories are arbitrary, used to group them on the sidebar.
+
+Applications that must not run together share a `singleton-tags` entry in their
+`metadata.json`. Only one running application per tag is allowed. For example, all
+file browsers use the `file-manager` tag, so starting one blocks the others.
 
 ### Deployments
 
@@ -52,6 +54,7 @@ configuration:
   "website": "https://example.org/",
   "caddy_path": "/example/",
   "protected": false,
+  "singleton-tags": ["book-reader"],
   "dependencies": [
     {
       "name": "calibre-web",
@@ -65,13 +68,15 @@ configuration:
 - `website` is the official site link shown on the application card.
 - `caddy_path` is the same-domain path exposed through Caddy; running applications link to it.
 - `protected` marks applications that must not be shut down when the server is overloaded.
+- `singleton-tags` is a list of tags that make the application exclusive: starting it blocks every other application that shares a tag. This can be used to block ports, or have applications that share the same paths.
 - `dependencies` lists applications that must be started before this one. `name` matches the app folder or display name, `category` selects the catalog category, and `required` defaults to `true` and controls whether a missing dependency blocks startup. Dependencies are started recursively, and dependencies that are already running are left alone.
 
 ### Caddy labels
 
 https://github.com/lucaslorentz/caddy-docker-proxy
 
-### Data volume
+### Data volumes
+
 The main thing to watch out for, is that if the user needs to see your files, then it must be on the `localhost_data` volume.
 This is mounted to `/data` in the file browser container.
 The user accessing it is set to 1000:1000, that is what you need to use if you interact with it.

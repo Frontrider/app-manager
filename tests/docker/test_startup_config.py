@@ -12,7 +12,7 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
-    "jellyfin_startup", ROOT / "apps/singleton/video/jelylfin/library-setup.py"
+    "jellyfin_startup", ROOT / "apps/video/jelylfin/library-setup.py"
 )
 jellyfin = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(jellyfin)
@@ -183,7 +183,7 @@ class SftpgoBootTest(unittest.TestCase):
         name = f"sftpgo-startup-test-{os.getpid()}"
         compose = subprocess.run([
             "docker", "compose", "-f",
-            str(ROOT / "apps/singleton/file-manager/sftpgo/docker-compose.yaml"),
+            str(ROOT / "apps/file-manager/sftpgo/docker-compose.yaml"),
             "config", "--format", "json",
         ], check=True, capture_output=True, text=True)
         environment = json.loads(compose.stdout)["services"]["sftpgo"]["environment"]
@@ -249,7 +249,7 @@ class SyncthingBootTest(unittest.TestCase):
         name = f"syncthing-startup-test-{os.getpid()}"
         compose = subprocess.run([
             "docker", "compose", "-f",
-            str(ROOT / "apps/standard/sharing/syncthing/docker-compose.yaml"),
+            str(ROOT / "apps/sharing/syncthing/docker-compose.yaml"),
             "config", "--format", "json",
         ], check=True, capture_output=True, text=True)
         service = json.loads(compose.stdout)["services"]["syncthing"]

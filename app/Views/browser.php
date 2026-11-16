@@ -13,6 +13,7 @@
             </div>
         <?php endif ?>
 
+        <?php $runningCount = count(array_filter($running)); ?>
         <div class="level mb-5">
             <div class="level-left">
                 <div>
@@ -20,7 +21,10 @@
                 </div>
             </div>
             <div class="level-right">
-                <span class="tag is-info is-light is-medium"><?= count(array_filter($running)) ?> running</span>
+                <a class="tag is-info is-light is-medium" href="<?= esc(site_url('activity'), 'attr') ?>"
+                   aria-label="Open application activity: <?= $runningCount ?> running">
+                    <?= $runningCount ?> running
+                </a>
             </div>
         </div>
 
@@ -91,6 +95,7 @@
                         'isRunning' => $running[$app['id']] ?? false,
                         'canManage' => $canManage ?? false,
                         'blockedBy' => $installationBlocks[$app['id']] ?? null,
+                        'wouldBlock' => $deploymentBlocks[$app['id']] ?? [],
                         'environmentFields' => $environments[$app['id']] ?? null,
                     ]) ?>
                 <?php endforeach ?>

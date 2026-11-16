@@ -66,7 +66,7 @@ final class SidebarTest extends CIUnitTestCase
     public function testRunningGameServerWithoutWebInterfaceIsOmitted(): void
     {
         $apps = array_column((new ApplicationModel())->catalog(), null, 'path');
-        $app = $apps['standard/games/mindustry/docker-compose.yaml'];
+        $app = $apps['games/mindustry/docker-compose.yaml'];
         $this->assertNull($app['caddyPath']);
         putenv('SIDEBAR_TEST_PROJECT=' . $app['project']);
 

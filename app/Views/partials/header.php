@@ -21,7 +21,11 @@
         :root { color-scheme: light; --app-background: #f5f7fa; --app-logo-background: #eef3f8; }
         :root[data-theme="dark"] { color-scheme: dark; --app-background: #161b22; --app-logo-background: #242d38; }
         body { min-height: 100vh; background: var(--app-background); }
-        .hero.is-localhost { background: linear-gradient(120deg, #173b63, #276c91); }
+        .navbar.is-localhost { background: linear-gradient(120deg, #173b63, #276c91); }
+        .navbar.is-localhost .navbar-item,
+        .navbar.is-localhost .navbar-burger { color: #fff; }
+        .navbar.is-localhost .navbar-item:hover,
+        .navbar.is-localhost .navbar-item:focus { background-color: rgba(255, 255, 255, 0.12); color: #fff; }
         .app-card { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
         .app-logo { display: block; width: 100%; height: 160px; object-fit: contain; padding: 1.5rem; background: var(--app-logo-background); }
         .app-card .card-content { flex: 1; }
@@ -45,6 +49,7 @@
         :root[data-theme="dark"] .theme-sun { display: none; }
         :root[data-theme="dark"] .theme-moon { display: inline; }
         .theme-switch input:focus-visible + .theme-track { outline: 2px solid #fff; outline-offset: 3px; }
+        #theme-message:empty { display: none; }
         @media (prefers-reduced-motion: reduce) {
             .theme-track, .theme-thumb { transition: none; }
             ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
@@ -52,22 +57,25 @@
     </style>
 </head>
 <body>
-<section class="hero is-localhost">
-    <div class="hero-body">
-        <div class="container">
-            <div class="level">
-                <div class="level-left">
-                    <p class="title has-text-white mb-0">Applications</p>
-                </div>
-                <div class="level-right">
-                    <?php if (session()->get('ldap_user')): ?>
-                        <a class="button is-light mr-3" href="<?= esc(site_url('/'), 'attr') ?>">Catalog</a>
-                        <a class="button is-light mr-4" href="<?= esc(site_url('activity'), 'attr') ?>">Application activity</a>
-                        <form method="post" action="<?= esc(site_url('logout'), 'attr') ?>" class="mr-4">
-                            <?= csrf_field() ?>
-                            <button type="submit" class="button is-danger">Sign out</button>
-                        </form>
-                    <?php endif ?>
+<nav class="navbar is-dark is-localhost" role="navigation" aria-label="Main navigation">
+    <div class="container">
+        <div class="navbar-brand">
+            <a class="navbar-item has-text-weight-bold" href="<?= esc(site_url('/'), 'attr') ?>">Local Host</a>
+            <a role="button" class="navbar-burger" aria-label="Open navigation menu" aria-expanded="false"
+               aria-controls="main-navigation" data-navbar-burger>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+            </a>
+        </div>
+        <div class="navbar-menu" id="main-navigation">
+            <div class="navbar-start">
+                <?php if (session()->get('ldap_user')): ?>
+                    <a class="navbar-item" href="<?= esc(site_url('/'), 'attr') ?>">Catalog</a>
+                <?php endif ?>
+            </div>
+            <div class="navbar-end">
+                <div class="navbar-item">
                     <label class="theme-control">
                         <span class="theme-switch">
                             <input id="theme-toggle" type="checkbox" role="switch" aria-label="Dark mode">
@@ -85,8 +93,13 @@
                         </span>
                     </label>
                 </div>
+                <?php if (session()->get('ldap_user')): ?>
+                    <form method="post" action="<?= esc(site_url('logout'), 'attr') ?>" class="navbar-item">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="button is-danger is-light">Sign out</button>
+                    </form>
+                <?php endif ?>
             </div>
-            <p id="theme-message" class="has-text-white-ter is-size-7" role="status"></p>
         </div>
     </div>
-</section>
+</nav>

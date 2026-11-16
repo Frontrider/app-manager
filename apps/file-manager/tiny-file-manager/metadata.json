@@ -1,0 +1,6 @@
+{
+  "website": "https://tinyfilemanager.github.io/",
+  "caddy_path": "/files/",
+  "singleton-tags": ["file-manager"],
+  "protected": true
+}

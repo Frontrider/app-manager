@@ -9,7 +9,7 @@ final class GameCatalogTest extends CIUnitTestCase
     {
         $store = new ApplicationModel();
         $apps = array_column($store->catalog(), null, 'path');
-        $app = $apps['standard/video/obs-bridge/docker-compose.yaml'];
+        $app = $apps['video/obs-bridge/docker-compose.yaml'];
         $this->assertSame('video', $store->category($app));
         $this->assertSame('/obs-bridge/bridge/', $app['caddyPath']);
         $this->assertNotNull($app['website']);
@@ -97,7 +97,7 @@ final class GameCatalogTest extends CIUnitTestCase
 
     public function testRqbitListenerPortsUseInterpolatableLabelValues(): void
     {
-        $contents = file_get_contents(ROOTPATH . 'apps/standard/sharing/rqbit/docker-compose.yaml');
+        $contents = file_get_contents(ROOTPATH . 'apps/sharing/rqbit/docker-compose.yaml');
         $this->assertStringContainsString(
             '- "caddy_1.layer4.:${SERVER_PORT}.route.proxy={{upstreams ${SERVER_PORT}}}"',
             $contents,
@@ -111,11 +111,11 @@ final class GameCatalogTest extends CIUnitTestCase
 
     public function testSyncthingLayer4RootAndKomgaClaimHandler(): void
     {
-        $syncthing = file_get_contents(ROOTPATH . 'apps/standard/sharing/syncthing/docker-compose.yaml');
+        $syncthing = file_get_contents(ROOTPATH . 'apps/sharing/syncthing/docker-compose.yaml');
         $this->assertStringContainsString("caddy_1: ''", $syncthing);
         $this->assertStringContainsString("'caddy_1.layer4.:22000.route.proxy': '{{upstreams 22000}}'", $syncthing);
         $this->assertStringContainsString("'caddy_1.layer4.udp/:22000.route.proxy': 'udp/{{upstreams 22000}}'", $syncthing);
-        $komga = file_get_contents(ROOTPATH . 'apps/singleton/books/komga/docker-compose.yaml');
+        $komga = file_get_contents(ROOTPATH . 'apps/books/komga/docker-compose.yaml');
         $this->assertStringNotContainsString('caddy.5_handle', $komga);
         $this->assertStringContainsString("caddy.6_handle.0_respond: '@komga_claim Forbidden 403'", $komga);
         $this->assertStringNotContainsString('forward_auth', $komga);
@@ -126,7 +126,7 @@ final class GameCatalogTest extends CIUnitTestCase
         $store = new ApplicationModel();
         $games = array_values(array_filter(
             $store->catalog(),
-            static fn (array $app): bool => str_starts_with($app['path'], 'standard/games/'),
+            static fn (array $app): bool => str_starts_with($app['path'], 'games/'),
         ));
         $folders = array_map(static fn (array $app): string => basename(dirname($app['file'])), $games);
         sort($folders);

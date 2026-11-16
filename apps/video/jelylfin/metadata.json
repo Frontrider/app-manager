@@ -1,0 +1,6 @@
+{
+  "website": "https://jellyfin.org/",
+  "caddy_path": "/jellyfin/",
+  "singleton-tags": ["video-player"],
+  "recommended": true
+}

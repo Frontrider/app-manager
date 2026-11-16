@@ -16,8 +16,8 @@ def load(name, path):
     return module
 
 
-jellyfin = load("jellyfin_setup", "apps/singleton/video/jelylfin/library-setup.py")
-komga = load("komga_setup", "apps/singleton/books/komga/library-setup.py")
+jellyfin = load("jellyfin_setup", "apps/video/jelylfin/library-setup.py")
+komga = load("komga_setup", "apps/books/komga/library-setup.py")
 
 
 class LibrarySetupTest(unittest.TestCase):

@@ -39,10 +39,12 @@ class Home extends BaseController
         $running = $store->runningApps($apps);
         $canManage = session()->get('ldap_user')['isAdmin'] === true;
         $environments = [];
+        $deploymentBlocks = [];
         if ($canManage) {
             foreach ($apps as $app) {
                 if (! $running[$app['id']]) {
                     $environments[$app['id']] = $store->environmentFields($app);
+                    $deploymentBlocks[$app['id']] = $store->deploymentBlocks($app, $apps, $running);
                 }
             }
         }
@@ -82,6 +84,7 @@ class Home extends BaseController
             'categories' => $categories,
             'selectedCategory' => $selectedCategory,
             'installationBlocks' => $store->installationBlocks($apps, $running),
+            'deploymentBlocks' => $deploymentBlocks,
             'canManage' => $canManage,
             'environments' => $environments,
             'searchQuery' => $query,
