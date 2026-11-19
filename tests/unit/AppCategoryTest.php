@@ -234,6 +234,7 @@ final class AppCategoryTest extends CIUnitTestCase
     ): array
     {
         return [
+            'id' => 'container-' . md5($project . $state . $health . $exitCode . $restart),
             'name' => '/test-server',
             'labels' => ['com.docker.compose.project' => $project],
             'state' => ['Status' => $state, 'ExitCode' => $exitCode, 'Health' => ['Status' => $health]],
@@ -296,6 +297,17 @@ final class AppCategoryTest extends CIUnitTestCase
             ]));
             $this->assertSame($expected, $this->store->applicationActivity()[0]['status']);
         }
+    }
+
+    public function testActivityReportsCpuAndMemoryUsage(): void
+    {
+        putenv('CATEGORY_TEST_ACTIVITY=' . json_encode([
+            $this->activityContainer($this->apps['First']['project'], 'running'),
+        ]));
+
+        $activity = $this->store->applicationActivity();
+        $this->assertSame(1.3, $activity[0]['cpuPercent']);
+        $this->assertSame(100 * 1024 * 1024, $activity[0]['memoryBytes']);
     }
 
     public function testActivityShowsLiveOperationsButNeverStaleMarkers(): void
@@ -387,7 +399,7 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->assertStringContainsString('Application activity</h1>', $html);
         $this->assertStringContainsString('data-activity-panel', $html);
         $this->assertStringContainsString('hx-get="', $html);
-        $this->assertStringContainsString('hx-trigger="load every 3s', $html);
+        $this->assertStringContainsString('hx-trigger="every 3s', $html);
         $this->assertStringContainsString('hx-target="#activity-rows"', $html);
         $this->assertStringContainsString('hx-swap="morph"', $html);
         $this->assertStringNotContainsString('Delete data</button>', $html);
@@ -407,12 +419,26 @@ final class AppCategoryTest extends CIUnitTestCase
         putenv('CATEGORY_TEST_ACTIVITY=' . json_encode([
             $this->activityContainer($this->apps['First']['project'], 'running'),
         ]));
+        $initial = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('activity');
+        $initial->assertStatus(200);
+        $initialHtml = $initial->response()->getBody();
+        $this->assertStringContainsString('data-activity-row', $initialHtml);
+        $this->assertStringContainsString('>First<', $initialHtml);
+        $this->assertStringContainsString('1.3%', $initialHtml);
+        $this->assertStringContainsString('100.0 MiB', $initialHtml);
+
         $adminFeed = $this->withSession(['ldap_user' => [
             'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
         ]])->get('activity/output');
         $adminFeed->assertStatus(286);
         $adminHtml = $adminFeed->response()->getBody();
         $this->assertStringContainsString('data-activity-logs', $adminHtml);
+        $this->assertStringContainsString('data-activity-cpu', $adminHtml);
+        $this->assertStringContainsString('data-activity-memory', $adminHtml);
+        $this->assertStringContainsString('1.3%', $adminHtml);
+        $this->assertStringContainsString('100.0 MiB', $adminHtml);
         $this->assertStringContainsString(
             'hx-get="' . esc(site_url('apps/' . $this->apps['First']['id'] . '/delete-data'), 'attr') . '"',
             $adminHtml,

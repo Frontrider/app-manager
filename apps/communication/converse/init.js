@@ -1,1 +1,0 @@
-converse.initialize(window.localhostConverseConfig || {});

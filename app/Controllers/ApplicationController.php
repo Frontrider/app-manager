@@ -9,6 +9,22 @@ use RuntimeException;
 
 class ApplicationController extends BaseController
 {
+    public function activity(): ResponseInterface
+    {
+        $user = session()->get('ldap_user');
+        $canManage = is_array($user) && ($user['isAdmin'] ?? false) === true;
+        session()->close();
+        [$applications, $error] = $this->readActivity();
+
+        return $this->response
+            ->setHeader('Cache-Control', 'no-store')
+            ->setBody(view('activity', [
+                'applications' => $applications,
+                'canManage' => $canManage,
+                'error' => $error,
+            ]));
+    }
+
     public function activityOutput(): ResponseInterface
     {
         $user = session()->get('ldap_user');
@@ -20,16 +36,13 @@ class ApplicationController extends BaseController
             ->setHeader('Cache-Control', 'no-store')
             ->setHeader('X-Content-Type-Options', 'nosniff');
 
-        try {
-            $applications = (new ApplicationModel())->applicationActivity();
-        } catch (RuntimeException | \JsonException $exception) {
-            log_message('error', 'Could not read application activity: {message}', [
-                'message' => $exception->getMessage(),
-            ]);
+        [$applications, $error] = $this->readActivity();
+
+        if ($error !== null) {
             return $this->response->setStatusCode(500)->setBody(view('partials/activity_content', [
                 'applications' => [],
                 'canManage' => $canManage,
-                'error' => 'Could not read application activity. Try again shortly.',
+                'error' => $error,
             ]));
         }
 
@@ -44,6 +57,22 @@ class ApplicationController extends BaseController
             'canManage' => $canManage,
             'error' => null,
         ]));
+    }
+
+    /**
+     * @return array{0: list<array>, 1: ?string}
+     */
+    private function readActivity(): array
+    {
+        try {
+            return [(new ApplicationModel())->applicationActivity(), null];
+        } catch (RuntimeException | \JsonException $exception) {
+            log_message('error', 'Could not read application activity: {message}', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return [[], 'Could not read application activity. Try again shortly.'];
+        }
     }
 
     /**

@@ -6,6 +6,12 @@ if (getenv('CATEGORY_TEST_ACTIVITY') !== false) {
         echo "activity-container\n";
         exit(0);
     }
+    if (($argv[1] ?? '') === 'stats') {
+        foreach (json_decode(getenv('CATEGORY_TEST_ACTIVITY'), true, 512, JSON_THROW_ON_ERROR) as $container) {
+            echo ($container['id'] ?? 'activity-container'), "\t1.25%\t100MiB / 1GiB\n";
+        }
+        exit(0);
+    }
     if (($argv[1] ?? '') === 'inspect') {
         if (getenv('CATEGORY_TEST_ACTIVITY') === 'error') {
             fwrite(STDERR, "Docker unavailable\n");

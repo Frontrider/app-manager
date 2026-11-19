@@ -161,7 +161,7 @@ class ApplicationModel
     }
 
     /**
-     * @return list<array{id: string, name: string, category: string, status: string, containers: list<array{name: string, status: string}>}>
+     * @return list<array{id: string, name: string, category: string, status: string, containers: list<array{id: string, name: string, status: string}>, cpuPercent: float, memoryBytes: int}>
      */
     public function applicationActivity(): array
     {
@@ -170,10 +170,11 @@ class ApplicationModel
             $this->dockerBinary, 'ps', '--all', '--quiet', '--filter', 'label=com.docker.compose.project',
         ])), -1, PREG_SPLIT_NO_EMPTY);
         $containers = [];
+        $containerIds = [];
         if ($ids !== []) {
             $output = $this->run(array_merge([
                 $this->dockerBinary, 'inspect', '--format',
-                '{"name":{{json .Name}},"labels":{{json .Config.Labels}},"state":{{json .State}},"restart":{{json .HostConfig.RestartPolicy.Name}}}',
+                '{"id":{{json .Id}},"name":{{json .Name}},"labels":{{json .Config.Labels}},"state":{{json .State}},"restart":{{json .HostConfig.RestartPolicy.Name}}}',
             ], $ids));
             foreach (array_filter(explode("\n", trim($output))) as $line) {
                 $container = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
@@ -196,12 +197,28 @@ class ApplicationModel
                     default => null,
                 };
                 if ($status !== null) {
+                    $containerId = (string) ($container['id'] ?? '');
                     $containers[$container['labels']['com.docker.compose.project']][] = [
-                        'name' => ltrim($container['name'], '/'), 'status' => $status,
+                        'id' => $containerId,
+                        'name' => ltrim($container['name'], '/'),
+                        'status' => $status,
                     ];
+                    if ($containerId !== '') {
+                        $containerIds[] = $containerId;
+                    }
                 }
             }
         }
+
+        $stats = [];
+        try {
+            $stats = $this->containerStats($containerIds);
+        } catch (RuntimeException $exception) {
+            log_message('error', 'Could not read container resource usage: {message}', [
+                'message' => $exception->getMessage(),
+            ]);
+        }
+
         $activity = [];
         foreach ($apps as $app) {
             $services = $containers[$app['project']] ?? [];
@@ -237,14 +254,74 @@ class ApplicationModel
                 }
             }
             if ($status !== null) {
+                $cpuPercent = 0.0;
+                $memoryBytes = 0;
+                foreach ($services as $service) {
+                    $usage = $stats[$service['id']] ?? null;
+                    if ($usage === null) {
+                        continue;
+                    }
+                    $cpuPercent += $usage['cpuPercent'];
+                    $memoryBytes += $usage['memoryBytes'];
+                }
+
                 $activity[] = [
                     'id' => $app['id'], 'name' => $app['name'], 'category' => $this->category($app),
                     'status' => $status, 'containers' => $services,
+                    'cpuPercent' => round($cpuPercent, 1), 'memoryBytes' => $memoryBytes,
                 ];
             }
         }
 
         return $activity;
+    }
+
+    /**
+     * @param list<string> $ids
+     * @return array<string, array{cpuPercent: float, memoryBytes: int}>
+     */
+    private function containerStats(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $output = $this->run(array_merge([
+            $this->dockerBinary, 'stats', '--all', '--no-stream', '--no-trunc', '--format',
+            '{{.ID}}\t{{.CPUPerc}}\t{{.MemUsage}}',
+        ], array_values(array_unique($ids))));
+
+        $stats = [];
+        foreach (array_filter(explode("\n", trim($output))) as $line) {
+            $fields = explode("\t", $line, 3);
+            if (count($fields) !== 3) {
+                throw new RuntimeException('Docker returned invalid container statistics.');
+            }
+
+            $cpu = rtrim(trim($fields[1]), '%');
+            $stats[trim($fields[0])] = [
+                'cpuPercent' => is_numeric($cpu) ? max(0, (float) $cpu) : 0.0,
+                'memoryBytes' => $this->parseMemoryUsage($fields[2]),
+            ];
+        }
+
+        return $stats;
+    }
+
+    private function parseMemoryUsage(string $usage): int
+    {
+        $used = trim(explode('/', $usage, 2)[0]);
+        if (! preg_match('/^([0-9.]+)\s*([KMGTP]?i?B)$/i', $used, $match)) {
+            return 0;
+        }
+
+        $unit = strtoupper($match[2]);
+        $power = strpos('BKMGTP', $unit[0]);
+        if ($power === false) {
+            return 0;
+        }
+
+        return (int) round((float) $match[1] * ((str_contains($unit, 'I') ? 1024 : 1000) ** $power));
     }
 
     /**

@@ -9,7 +9,7 @@ $routes->get('login', 'Auth::login');
 $routes->post('login', 'Auth::authenticate');
 $routes->post('logout', 'Auth::logout', ['filter' => 'ldapSession']);
 $routes->get('/', 'Home::index', ['filter' => 'ldapSession']);
-$routes->get('activity', 'Home::activity', ['filter' => 'ldapSession']);
+$routes->get('activity', 'ApplicationController::activity', ['filter' => 'ldapSession']);
 $routes->post('settings/dark_mode', 'UserSettingsController::set_dark_mode', ['filter' => 'ldapSession']);
 $routes->get('activity/output', 'ApplicationController::activityOutput', ['filter' => 'ldapSession']);
 $routes->get('host/stats', 'HostStatsController::index', ['filter' => 'ldapSession']);

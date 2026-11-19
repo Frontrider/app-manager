@@ -9,13 +9,6 @@ use RuntimeException;
 
 class Home extends BaseController
 {
-    public function activity(): ResponseInterface
-    {
-        return $this->response->setHeader('Cache-Control', 'no-store')->setBody(view('activity', [
-            'canManage' => session()->get('ldap_user')['isAdmin'],
-        ]));
-    }
-
     public function index(?string $category = null): ResponseInterface
     {
         $store = new ApplicationModel();

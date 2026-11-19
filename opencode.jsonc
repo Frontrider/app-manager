@@ -4,6 +4,8 @@
     { "action": "glob", "resource": "*", "effect": "deny" },
     { "action": "grep", "resource": "*", "effect": "deny" },
     { "action": "external_directory", "resource": "*", "effect": "deny" },
-    { "action": "shell", "resource": "*", "effect": "deny" }
+    { "action": "shell", "resource": "*", "effect": "deny" },
+    { "action": "webfetch", "resource": "*example.com*", "effect": "deny" }
+
   ]
 }

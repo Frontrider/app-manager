@@ -1,0 +1,79 @@
+services:
+  prosody-init:
+    build:
+      context: .
+      dockerfile: init.Dockerfile
+    image: localhost-prosody-init:latest
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    volumes:
+      - prosody_data:/var/lib/prosody
+
+  prosody:
+    build:
+      context: .
+    image: localhost-prosody:latest
+    restart: unless-stopped
+    depends_on:
+      prosody-init:
+        condition: service_completed_successfully
+    volumes:
+      - prosody_data:/var/lib/prosody
+      - global-env:/global-env:ro
+    networks:
+      - internal
+    labels:
+      - "caddy=:90"
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      # BOSH, WebSocket and HTTP file sharing. Caddy terminates TLS for clients.
+      - "caddy.8_redir=/prosody /prosody/ permanent"
+      - "caddy.8_handle_path=/prosody/*"
+      - "caddy.8_handle_path.0_reverse_proxy={{upstreams 5280}}"
+      - "caddy.8_handle_path.0_reverse_proxy.0_header_up=Accept-Encoding identity"
+      # Prosody expects its bare XMPP domain in Host, not host:port.
+      - "caddy.8_handle_path.0_reverse_proxy.1_header_up=Host {http.request.host}"
+      # XEP-0156 discovery. Keep the path intact; Prosody's http_altconnect
+      # module serves the host-meta XML from its HTTP listener.
+      - "caddy.9_handle=/.well-known/host-meta*"
+      - "caddy.9_handle.0_header=Access-Control-Allow-Origin *"
+      - "caddy.9_handle.1_reverse_proxy={{upstreams 5280}}"
+      - "caddy.9_handle.1_reverse_proxy.header_up=Host {http.request.host}"
+      # Native XMPP clients use direct TLS on 5223 (XEP-0368). Caddy terminates
+      # TLS with the domain certificate and forwards plaintext XMPP to Prosody
+      # with a PROXY header so the real client address is preserved. The core
+      # Caddy container must also publish TCP 5223 and have the domain cert.
+      - "caddy_1="
+      - "caddy_1.layer4.:5223.route.0_tls="
+      - "caddy_1.layer4.:5223.route.1_proxy={{upstreams 15222}}"
+      - "caddy_1.layer4.:5223.route.1_proxy.proxy_protocol=v1"
+      # Private federation: plaintext s2s inside the overlay, authenticated by
+      # dialback. The core Caddy must publish TCP 5269 on the overlay.
+      - "caddy_1.layer4.:5269.route.proxy={{upstreams 5269}}"
+
+  xmpp-web:
+    build:
+      context: .
+      dockerfile: web.Dockerfile
+    image: localhost-xmpp-web:latest
+    restart: unless-stopped
+    networks:
+      - internal
+    labels:
+      - "caddy=:90"
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.6_redir=/xmpp-web /xmpp-web/ permanent"
+      - "caddy.6_handle_path=/xmpp-web/*"
+      - "caddy.6_handle_path.0_reverse_proxy={{upstreams 80}}"
+
+volumes:
+  prosody_data:
+    driver: local
+  global-env:
+    external: true
+    name: "${GLOBAL_ENV_VOLUME:-localhost_global_env}"
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"
