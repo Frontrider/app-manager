@@ -30,3 +30,7 @@ use `/auth/api/authz/forward-auth-admin` as the path if only admins should be ab
 Always publish every port that the application needs with caddy. 
 
 There is an entire caddy reverse proxy in the stack, avoid using anything else if possible.
+
+
+Every container reading the data volume from /data must use 1000:1000 as its uid/guid pair.
+

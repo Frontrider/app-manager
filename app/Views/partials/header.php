@@ -1,63 +1,104 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<?php helper('preferences');
+$styleVersion = filemtime(FCPATH . 'styles/style.css') ?: time();
+?>
+<html lang="en" data-theme="<?php if (preference('dark_mode')) echo 'dark'; else echo 'light' ?>">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Local Host</title>
-    <script>
-        try {
-            const savedTheme = localStorage.getItem('localhost-theme');
-            if (savedTheme === 'light' || savedTheme === 'dark') {
-                document.documentElement.dataset.theme = savedTheme;
-            }
-        } catch (error) {
-            console.warn('Could not restore the saved theme.', error);
-        }
-    </script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+    <link rel="stylesheet" href="/styles/bulma.min.css">
+    <link rel="stylesheet" href="/styles/style.css?v=<?= esc((string) $styleVersion, 'attr') ?>">
     <style>
-        @view-transition { navigation: auto; }
-        ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 120ms; }
-        :root { color-scheme: light; --app-background: #f5f7fa; --app-logo-background: #eef3f8; }
-        :root[data-theme="dark"] { color-scheme: dark; --app-background: #161b22; --app-logo-background: #242d38; }
-        body { min-height: 100vh; background: var(--app-background); }
-        .navbar.is-localhost { background: linear-gradient(120deg, #173b63, #276c91); }
-        .navbar.is-localhost .navbar-item,
-        .navbar.is-localhost .navbar-burger { color: #fff; }
-        .navbar.is-localhost .navbar-item:hover,
-        .navbar.is-localhost .navbar-item:focus { background-color: rgba(255, 255, 255, 0.12); color: #fff; }
-        .app-card { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
-        .app-logo { display: block; width: 100%; height: 160px; object-fit: contain; padding: 1.5rem; background: var(--app-logo-background); }
-        .app-card .card-content { flex: 1; }
-        .app-card .level-left { flex: 1; min-width: 0; margin-right: 0.75rem; }
-        .app-card h2 { overflow-wrap: anywhere; }
-        .app-path { overflow-wrap: anywhere; }
-        .card-footer form { width: 100%; }
-        body { display: flex; flex-direction: column; }
-        .app-catalog { flex: 1; display: flex; }
-        .app-catalog-container { display: flex; flex-direction: column; }
-        .app-catalog-layout { flex: 1; }
-        .theme-control { display: inline-flex; align-items: center; gap: 0.75rem; color: #fff; cursor: pointer; }
-        .theme-switch { position: relative; display: inline-flex; width: 3.5rem; height: 2rem; }
-        .theme-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-        .theme-track { width: 100%; border-radius: 999px; background: #bce3fa; pointer-events: none; transition: background 150ms; }
-        .theme-thumb { position: absolute; top: 0.25rem; left: 0.25rem; width: 1.5rem; height: 1.5rem; display: grid; place-items: center; border-radius: 50%; background: #fff4cf; color: #956000; transition: transform 150ms; }
-        .theme-thumb svg { width: 1.125rem; height: 1.125rem; }
-        .theme-moon { display: none; }
-        :root[data-theme="dark"] .theme-track { background: #111c35; }
-        :root[data-theme="dark"] .theme-thumb { transform: translateX(1.5rem); background: #dce6ff; color: #273966; }
-        :root[data-theme="dark"] .theme-sun { display: none; }
-        :root[data-theme="dark"] .theme-moon { display: inline; }
-        .theme-switch input:focus-visible + .theme-track { outline: 2px solid #fff; outline-offset: 3px; }
-        #theme-message:empty { display: none; }
+        .theme-control {
+            display: inline-flex;
+            align-items: center;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .theme-switch {
+            position: relative;
+            display: inline-flex;
+            width: 3.5rem;
+            height: 2rem;
+        }
+
+        .theme-switch__input {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .theme-track {
+            width: 100%;
+            border-radius: 999px;
+            background: #bce3fa;
+            pointer-events: none;
+            transition: background-color 0.5s ease;
+        }
+
+        .theme-thumb {
+            position: absolute;
+            top: 0.25rem;
+            left: 0.25rem;
+            display: grid;
+            width: 1.5rem;
+            height: 1.5rem;
+            place-items: center;
+            border-radius: 50%;
+            background: #fff4cf;
+            color: #956000;
+            transition: transform 0.5s ease, background-color 0.5s ease, color 0.5s ease;
+        }
+
+        .theme-thumb svg {
+            width: 1.125rem;
+            height: 1.125rem;
+        }
+
+        .theme-moon {
+            display: none;
+        }
+
+        .theme-switch__input:checked ~ .theme-track {
+            background: #111c35;
+        }
+
+        .theme-switch__input:checked ~ .theme-track .theme-thumb {
+            transform: translateX(1.5rem);
+            background: #dce6ff;
+            color: #273966;
+        }
+
+        .theme-switch__input:checked ~ .theme-track .theme-sun {
+            display: none;
+        }
+
+        .theme-switch__input:checked ~ .theme-track .theme-moon {
+            display: inline;
+        }
+
+        .theme-switch__input:focus-visible ~ .theme-track {
+            outline: 2px solid #fff;
+            outline-offset: 3px;
+        }
+
         @media (prefers-reduced-motion: reduce) {
-            .theme-track, .theme-thumb { transition: none; }
-            ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+            .theme-track,
+            .theme-thumb {
+                transition: none;
+            }
         }
     </style>
 </head>
-<body>
-<nav class="navbar is-dark is-localhost" role="navigation" aria-label="Main navigation">
+<body hx-ext="morph">
+<nav class="navbar is-dark is-link" role="navigation" aria-label="Main navigation">
     <div class="container">
         <div class="navbar-brand">
             <a class="navbar-item has-text-weight-bold" href="<?= esc(site_url('/'), 'attr') ?>">Local Host</a>
@@ -75,23 +116,47 @@
                 <?php endif ?>
             </div>
             <div class="navbar-end">
+                <?php if (session()->get('ldap_user')): ?>
+                    <div class="navbar-item">
+                        <div id="host-stats"
+                             hx-get="<?= esc(site_url('host/stats'), 'attr') ?>"
+                             hx-trigger="load, every 5s"
+                             hx-swap="innerHTML"
+                             aria-label="Host CPU and memory usage">
+                            <div class="tags has-addons mb-0">
+                                <span class="tag is-dark">CPU --</span>
+                                <span class="tag is-dark">RAM --</span>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif ?>
                 <div class="navbar-item">
-                    <label class="theme-control">
-                        <span class="theme-switch">
-                            <input id="theme-toggle" type="checkbox" role="switch" aria-label="Dark mode">
-                            <span class="theme-track" aria-hidden="true">
-                                <span class="theme-thumb">
-                                    <svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                        <circle cx="12" cy="12" r="4"/>
-                                        <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>
-                                    </svg>
-                                    <svg class="theme-moon" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M20.5 14.5A9 9 0 0 1 9.5 3.5a9 9 0 1 0 11 11Z"/>
-                                    </svg>
+                    <?php if (session()->get('ldap_user')): ?>
+                        <label class="theme-control">
+                            <span class="theme-switch">
+                                <input class="theme-switch__input" type="checkbox" role="switch" id="theme-toggle"
+                                       aria-label="Dark mode"
+                                       name="dark_mode"
+                                       value="1"
+                                       <?= preference('dark_mode') == true ? 'checked' : '' ?>
+                                       hx-post="<?= esc(site_url('settings/dark_mode'), 'attr') ?>"
+                                       hx-trigger="change"
+                                       hx-headers='<?= esc(json_encode([csrf_header() => csrf_hash()], JSON_THROW_ON_ERROR), 'attr') ?>'
+                                       hx-on::after-request="setTimeout(() => window.location.reload(), 500)">
+                                <span class="theme-track" aria-hidden="true">
+                                    <span class="theme-thumb">
+                                        <svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                            <circle cx="12" cy="12" r="4"/>
+                                            <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>
+                                        </svg>
+                                        <svg class="theme-moon" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M20.5 14.5A9 9 0 0 1 9.5 3.5a9 9 0 1 0 11 11Z"/>
+                                        </svg>
+                                    </span>
                                 </span>
                             </span>
-                        </span>
-                    </label>
+                        </label>
+                    <?php endif ?>
                 </div>
                 <?php if (session()->get('ldap_user')): ?>
                     <form method="post" action="<?= esc(site_url('logout'), 'attr') ?>" class="navbar-item">

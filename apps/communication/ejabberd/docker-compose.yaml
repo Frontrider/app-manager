@@ -62,11 +62,9 @@ services:
       - "caddy.7_handle.0_forward_auth=127.0.0.1:9091"
       - "caddy.7_handle.0_forward_auth.uri=/auth/api/authz/forward-auth"
       - "caddy.7_handle.0_forward_auth.copy_headers=Remote-User Remote-Groups Remote-Name Remote-Email"
-      # Keep the client Authorization header away from the forward-auth service.
-      - "caddy.7_handle.0_forward_auth.header_up=-Authorization"
       - "caddy.7_handle.1_respond=@ejabberd_admin_denied Forbidden 403"
       - "caddy.7_handle.2_uri=strip_prefix /ejabberd"
-      - "caddy.7_handle.3_reverse_proxy={{upstreams 8081}}"
+      - "caddy.7_handle.3_reverse_proxy=ejabberd-auth:8081"
       - "caddy.7_handle.3_reverse_proxy.header_up=Accept-Encoding identity"
       # XMPP clients use these endpoints directly, so they cannot require forward auth.
       - "caddy.8_handle_path=/ejabberd/*"

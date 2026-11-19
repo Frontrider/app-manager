@@ -64,6 +64,39 @@ final class LdapAuthTest extends CIUnitTestCase
         $this->assertNull(session()->get('ldap_user'));
     }
 
+    public function testUserPreferencesSurviveLogout(): void
+    {
+        helper('preferences');
+        $username = 'preference-' . bin2hex(random_bytes(6));
+        $user = ['username' => $username, 'isAdmin' => false, 'expiresAt' => time() + 3600];
+        $directory = WRITEPATH . 'settings/' . hash('xxh128', 'user:' . $username);
+        $file = $directory . '/Preferences.php';
+
+        try {
+            $this->withSession(['ldap_user' => $user])
+                ->post('settings/dark_mode', ['dark_mode' => '1', csrf_token() => csrf_hash()])
+                ->assertStatus(200);
+
+            $this->assertFileExists($file);
+            $this->assertFalse(session()->has('settings-Preferences.dark_mode'));
+
+            $this->withSession(['ldap_user' => $user])
+                ->post('logout', [csrf_token() => csrf_hash()]);
+            $this->assertNull(session()->get('ldap_user'));
+
+            session()->set('ldap_user', $user);
+            $this->assertTrue(preference('dark_mode'));
+        } finally {
+            session()->remove('settings-Preferences.dark_mode');
+            if (is_file($file)) {
+                unlink($file);
+            }
+            if (is_dir($directory) && count(scandir($directory)) === 2) {
+                rmdir($directory);
+            }
+        }
+    }
+
     public function testExpiredSessionCannotManageApplications(): void
     {
         $user = $this->user(true);

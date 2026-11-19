@@ -1,0 +1,1 @@
+Enterprise file server. It is NOT mounted to your regular data volume, because this software is not fully compatible with adding files by external applications.

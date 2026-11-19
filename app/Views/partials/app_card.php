@@ -28,20 +28,34 @@
                         'max_nesting_level' => 50,
                     ]))->convert($app['description']) ?></div>
             <?php endif ?>
-            <?php if ($isRunning && $app['caddyPath'] !== null): ?>
-                <a class="button is-text mt-3" target="_blank" rel="noopener"
-                   href="<?= esc($app['caddyPath'], 'attr') ?>">Open app</a>
-            <?php endif ?>
-            <?php if ($app['website'] !== null): ?>
-                <a class="button is-text mt-3" target="_blank" rel="noopener"
-                   href="<?= esc($app['website'], 'attr') ?>">Official website</a>
-            <?php endif ?>
-            <?php if ($canManage ?? false): ?>
-                <a class="button is-text mt-3" target="_blank" rel="noopener"
-                   href="<?= esc(site_url('apps/' . $app['id'] . '/logs'), 'attr') ?>">View logs</a>
-            <?php endif ?>
-            <?php if (($blockedBy ?? null) !== null): ?>
-                <p class="help mt-3">Deployment blocked by <strong><?= esc($blockedBy) ?>.</strong></p>
+            <?php
+            $hasLinks = ($isRunning && $app['caddyPath'] !== null)
+                || $app['website'] !== null
+                || ($canManage ?? false);
+            $hasMeta = $hasLinks || ($blockedBy ?? null) !== null;
+            ?>
+            <?php if ($hasMeta): ?>
+                <div class="app-card-meta">
+                    <?php if (($blockedBy ?? null) !== null): ?>
+                        <p class="help mb-0">Deployment blocked by <strong><?= esc($blockedBy) ?>.</strong></p>
+                    <?php endif ?>
+                    <?php if ($hasLinks): ?>
+                        <div class="app-card-links">
+                            <?php if ($isRunning && $app['caddyPath'] !== null): ?>
+                                <a class="button is-text" target="_blank" rel="noopener"
+                                   href="<?= esc($app['caddyPath'], 'attr') ?>">Open page</a>
+                            <?php endif ?>
+                            <?php if ($app['website'] !== null): ?>
+                                <a class="button is-text" target="_blank" rel="noopener"
+                                   href="<?= esc($app['website'], 'attr') ?>">Official website</a>
+                            <?php endif ?>
+                            <?php if ($canManage ?? false): ?>
+                                <a class="button is-text" target="_blank" rel="noopener"
+                                   href="<?= esc(site_url('apps/' . $app['id'] . '/logs'), 'attr') ?>">View logs</a>
+                            <?php endif ?>
+                        </div>
+                    <?php endif ?>
+                </div>
             <?php endif ?>
         </div>
         <?php if ($canManage ?? false): ?>
@@ -49,93 +63,41 @@
                 <div class="is-flex mb-3">
                     <?php if ($isRunning): ?>
                         <form action="<?= site_url('apps/' . $app['id'] . '/uninstall') ?>" method="post"
-                              class="is-fullwidth"
-                              data-pending-label="Stopping...">
+                              class="is-fullwidth">
                             <?= csrf_field() ?>
                             <button class="button is-danger is-light is-fullwidth" type="submit" aria-live="polite">Stop
-                                app
+                                service
                             </button>
                         </form>
                     <?php else: ?>
                         <?php $blocked = ($blockedBy ?? null) !== null; ?>
-                        <?php $willBlock = array_values($wouldBlock ?? []); ?>
                         <?php $showDeployDialog = ! empty($environmentFields) || ! empty($app['singletonTags'] ?? []); ?>
-                        <form action="<?= esc(site_url('apps/' . $app['id'] . '/install'), 'attr') ?>" method="post"
-                              class="is-fullwidth"
-                              data-pending-label="Starting...">
-                            <?= csrf_field() ?>
+                        <?php if ($showDeployDialog): ?>
                             <button class="button is-link is-fullwidth"
-                                    type="<?= $showDeployDialog ? 'button' : 'submit' ?>"
-                                <?= $showDeployDialog ? 'data-deploy-app' : '' ?>
-                                <?= !empty($environmentFields) ? 'data-configure-app' : '' ?> aria-live="polite"
-                                <?= $blocked ? 'disabled' : '' ?>>Start app
+                                    type="button"
+                                    hx-get="<?= esc(site_url('apps/' . $app['id'] . '/configure'), 'attr') ?>"
+                                    hx-target="#modal-container"
+                                    hx-swap="innerHTML"
+                                    hx-indicator="#modal-loading"
+                                    hx-disabled-elt="this"
+                                    aria-live="polite"
+                                <?= $blocked ? 'disabled' : '' ?>>Start service
                             </button>
-                            <?php if ($showDeployDialog): ?>
-                            <div class="modal" role="dialog" aria-modal="true" aria-hidden="true"
-                                 aria-labelledby="deploy-title-<?= esc($app['id'], 'attr') ?>">
-                                <div class="modal-background" data-cancel-configuration></div>
-                                <div class="modal-card">
-                                    <header class="modal-card-head">
-                                        <p class="modal-card-title" id="deploy-title-<?= esc($app['id'], 'attr') ?>">
-                                            <?= !empty($environmentFields) ? 'Configure' : 'Deploy' ?> <?= esc($app['name']) ?>
-                                        </p>
-                                        <button class="delete" type="button" aria-label="Close deployment"
-                                                data-cancel-configuration></button>
-                                    </header>
-                                    <section class="modal-card-body">
-                                        <?php if (!empty($environmentFields)): ?>
-                                            <p class="mb-4">These values will be saved for future starts.</p>
-                                            <?php foreach ($environmentFields as $name => $field): ?>
-                                                <div class="field">
-                                                    <label class="label"
-                                                           for="environment-<?= esc($app['id'] . '-' . $name, 'attr') ?>"><?= esc($name) ?></label>
-                                                    <div class="control">
-                                                        <input class="input"
-                                                               type="<?= preg_match('/PASS|SECRET|TOKEN|KEY/i', $name) ? 'password' : 'text' ?>"
-                                                               id="environment-<?= esc($app['id'] . '-' . $name, 'attr') ?>"
-                                                               name="environment[<?= esc($name, 'attr') ?>]"
-                                                               value="<?= esc($field['value'], 'attr') ?>"
-                                                               autocomplete="off">
-                                                    </div>
-                                                    <?php if ($field['description'] !== ''): ?>
-                                                        <p class="help"
-                                                           style="white-space: pre-line"><?= esc($field['description']) ?></p>
-                                                    <?php endif ?>
-                                                </div>
-                                            <?php endforeach ?>
-                                        <?php endif ?>
-                                        <p class="mb-2"><strong>Applications that will be blocked</strong></p>
-                                        <?php if ($willBlock === []): ?>
-                                            <p class="help">No other applications share a singleton tag with this
-                                                one.</p>
-                                        <?php else: ?>
-                                            <ul>
-                                                <?php foreach ($willBlock as $blockedName): ?>
-                                                    <li><?= esc($blockedName) ?></li>
-                                                <?php endforeach ?>
-                                            </ul>
-                                        <?php endif ?>
-                                    </section>
-                                    <footer class="modal-card-foot">
-                                        <div class="buttons">
-                                            <button class="button is-link" type="submit" data-deploy-confirm
-                                                    aria-live="polite">
-                                                <?= !empty($environmentFields) ? 'Save and start' : 'Deploy' ?>
-                                            </button>
-                                            <button class="button" type="button" data-cancel-configuration>Cancel
-                                            </button>
-                                        </div>
-                                    </footer>
-                                </div>
-                            </div>
-                            <?php endif ?>
-                        </form>
+                        <?php else: ?>
+                            <form action="<?= esc(site_url('apps/' . $app['id'] . '/install'), 'attr') ?>" method="post"
+                                  class="is-fullwidth">
+                                <?= csrf_field() ?>
+                                <button class="button is-link is-fullwidth" type="submit" aria-live="polite"
+                                    <?= $blocked ? 'disabled' : '' ?>>Start service
+                                </button>
+                            </form>
+                        <?php endif ?>
                     <?php endif ?>
                     <form action="<?= esc(site_url('apps/' . $app['id'] . '/refresh'), 'attr') ?>" method="post"
-                          class="ml-3" data-pending-label="Refreshing...">
+                          class="ml-3">
                         <?= csrf_field() ?>
                         <button class="button is-warning is-light is-fullwidth" type="submit" aria-live="polite"
-                            <?= ($blockedBy ?? null) !== null ? 'disabled' : '' ?>>Refresh app
+                            <?= ($blockedBy ?? null) !== null ? 'disabled' : '' ?>>Refresh service
                         </button>
                     </form>
                 </div>

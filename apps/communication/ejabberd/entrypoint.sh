@@ -42,5 +42,8 @@ sed \
 export EJABBERD_MACRO_HOST="$domain"
 export EJABBERD_MACRO_ADMIN="admin@$domain"
 export REGISTER_ADMIN_PASSWORD="$admin_password"
+# Keep the managed administrator in sync with ADMIN_PASSWORD on every start.
+# The leading ! allows the first registration attempt to fail when it already exists.
+export CTL_ON_START="! register admin $domain $admin_password ; change_password admin $domain $admin_password"
 
 exec /usr/local/bin/ejabberdctl "$@"

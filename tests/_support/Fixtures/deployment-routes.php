@@ -11,5 +11,5 @@ $routes->get('seed', static function () {
     return 'Session ready';
 });
 $routes->get('/', 'Home::index');
-$routes->get('deploy/(:segment)', 'Home::install/$1');
+$routes->get('deploy/(:segment)', 'ApplicationController::install/$1');
 $routes->get('app-id', static fn () => (new ApplicationModel())->catalog()[0]['id']);

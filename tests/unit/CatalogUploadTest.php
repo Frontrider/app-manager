@@ -61,6 +61,39 @@ final class CatalogUploadTest extends CIUnitTestCase
         $store->importCatalog($this->archive);
     }
 
+    public function testComposePasteCreatesOtherAppWithMinimalMetadata(): void
+    {
+        $name = 'Pasted App ' . bin2hex(random_bytes(8));
+        $compose = "services:\n  web:\n    image: nginx:alpine\n";
+        $store = new ApplicationModel();
+
+        $relative = $store->importCompose($name, 'pasted-app', $compose);
+        $app = $store->find(hash('sha256', $relative));
+        $this->importedDirectory = dirname($app['file'], 3);
+
+        $this->assertSame($name, $app['name']);
+        $this->assertSame('/pasted-app/', $app['caddyPath']);
+        $this->assertSame('other', $store->category($app));
+        $this->assertSame($compose, file_get_contents($app['file']));
+        $this->assertSame(
+            ['name' => $name, 'caddy_path' => '/pasted-app/'],
+            json_decode(file_get_contents(dirname($app['file']) . '/metadata.json'), true, 512, JSON_THROW_ON_ERROR),
+        );
+    }
+
+    public function testDuplicatePastedComposeNamesAreRejected(): void
+    {
+        $name = 'Duplicate App ' . bin2hex(random_bytes(8));
+        $store = new ApplicationModel();
+        $relative = $store->importCompose($name, '/duplicate-app/', "services: {}\n");
+        $app = $store->find(hash('sha256', $relative));
+        $this->importedDirectory = dirname($app['file'], 3);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('already exists');
+        $store->importCompose($name, '/another-path/', "services: {}\n");
+    }
+
     public function testTraversalIsRejected(): void
     {
         $zip = new ZipArchive();

@@ -12,6 +12,7 @@
     "require": {
         "php": "^8.2",
         "codeigniter4/framework": "^4.7",
+        "codeigniter4/settings": "^2.4",
         "league/commonmark": "^2.7"
     },
     "require-dev": {

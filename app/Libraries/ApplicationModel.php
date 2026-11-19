@@ -60,10 +60,10 @@ class ApplicationModel
                 $metadata = $this->metadata(dirname($path));
                 $apps[] = [
                     'id'      => $id,
-                    'name'    => ucwords(str_replace(['-', '_'], ' ', $name)),
+                    'name'    => $metadata['name'] ?? ucwords(str_replace(['-', '_'], ' ', $name)),
                     'path'    => $relativePath,
                     'file'    => $path,
-                    'project' => 'localhost-' . trim(preg_replace('/[^a-z0-9_-]+/', '-', strtolower($name)), '-'),
+                    'project' => 'localhost-' . $this->projectSlug($name),
                     'website' => $metadata['website'],
                     'caddyPath' => $metadata['caddyPath'],
                     'protected' => $metadata['protected'],
@@ -357,6 +357,7 @@ class ApplicationModel
 
     /**
      * @return array{
+     *     name: ?string,
      *     website: ?string,
      *     caddyPath: ?string,
      *     protected: bool,
@@ -370,6 +371,7 @@ class ApplicationModel
         $file = $directory . '/metadata.json';
         if (! file_exists($file)) {
             return [
+                'name' => null,
                 'website' => null,
                 'caddyPath' => null,
                 'protected' => false,
@@ -388,75 +390,102 @@ class ApplicationModel
 
         $contents = file_get_contents($path);
         if ($contents === false) {
-            throw new RuntimeException('Could not read app metadata: ' . $file);
+            throw new RuntimeException('Could not read app metadata.');
         }
 
         try {
             $metadata = json_decode($contents, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $exception) {
-            throw new RuntimeException('Could not parse app metadata: ' . $file, 0, $exception);
+            throw new RuntimeException('Could not parse app metadata.', 0, $exception);
         }
         if (! $metadata instanceof \stdClass) {
-            throw new RuntimeException('App metadata must be a JSON object: ' . $file);
+            throw new RuntimeException('App metadata must be a JSON object.');
         }
         $metadata = (array) $metadata;
 
+        $name = $metadata['name'] ?? null;
+        if ($name !== null && (! is_string($name) || trim($name) === ''
+            || strlen($name) > 120 || preg_match('/[\x00-\x1f\x7f]/', $name))) {
+            throw new RuntimeException('App metadata name must be a single-line string of at most 120 characters.');
+        }
+        $name = $name === null ? null : trim($name);
+
         $website = $metadata['website'] ?? null;
-        $caddyPath = $metadata['caddy_path'] ?? null;
+        $caddyPath = $this->normalizeCaddyPath($metadata['caddy_path'] ?? null);
         $protected = $metadata['protected'] ?? false;
         if (! is_bool($protected)) {
-            throw new RuntimeException('App metadata protected must be true or false: ' . $file);
+            throw new RuntimeException('App metadata protected must be true or false.');
         }
         $recommended = $metadata['recommended'] ?? false;
         if (! is_bool($recommended)) {
-            throw new RuntimeException('App metadata recommended must be true or false: ' . $file);
+            throw new RuntimeException('App metadata recommended must be true or false.');
         }
         if ($website !== null && (! is_string($website)
             || filter_var($website, FILTER_VALIDATE_URL) === false
             || ! in_array(parse_url($website, PHP_URL_SCHEME), ['https', 'http'], true))) {
-            throw new RuntimeException('App metadata website must be an HTTP or HTTPS URL: ' . $file);
-        }
-
-        if ($caddyPath !== null && (! is_string($caddyPath)
-            || ! str_starts_with($caddyPath, '/') || str_starts_with($caddyPath, '//')
-            || str_contains($caddyPath, '\\') || preg_match('/[\x00-\x20\x7f]/', $caddyPath)
-            || parse_url($caddyPath, PHP_URL_PATH) !== $caddyPath)) {
-            throw new RuntimeException('App metadata caddy_path must be a same-domain absolute path: ' . $file);
+            throw new RuntimeException('App metadata website must be an HTTP or HTTPS URL.');
         }
 
         return [
+            'name' => $name,
             'website' => $website,
             'caddyPath' => $caddyPath,
             'protected' => $protected,
             'recommended' => $recommended,
-            'singletonTags' => $this->metadataSingletonTags($metadata['singleton-tags'] ?? [], $file),
-            'dependencies' => $this->metadataDependencies($metadata['dependencies'] ?? [], $file),
+            'singletonTags' => $this->metadataSingletonTags($metadata['singleton-tags'] ?? []),
+            'dependencies' => $this->metadataDependencies($metadata['dependencies'] ?? []),
         ];
+    }
+
+    private function normalizeCaddyPath(mixed $caddyPath): ?string
+    {
+        if ($caddyPath === null) {
+            return null;
+        }
+        if (! is_string($caddyPath)) {
+            throw new RuntimeException('App metadata caddy_path must be a same-domain subpath.');
+        }
+
+        $caddyPath = trim($caddyPath);
+        if ($caddyPath === '' || str_starts_with($caddyPath, '//')
+            || str_contains($caddyPath, '\\') || preg_match('/[\x00-\x20\x7f]/', $caddyPath)
+            || strpbrk($caddyPath, '?#') !== false
+            || parse_url($caddyPath, PHP_URL_SCHEME) !== null
+            || parse_url($caddyPath, PHP_URL_HOST) !== null) {
+            throw new RuntimeException('App metadata caddy_path must be a same-domain subpath.');
+        }
+
+        $segments = array_values(array_filter(
+            explode('/', $caddyPath),
+            static fn (string $segment): bool => $segment !== '',
+        ));
+
+        return $segments === [] ? '/' : '/' . implode('/', $segments) . '/';
     }
 
     /**
      * @return list<string>
      */
-    private function metadataSingletonTags(mixed $tags, string $file): array
+    private function metadataSingletonTags(mixed $tags): array
     {
         if (! is_array($tags) || ! array_is_list($tags)) {
-            throw new RuntimeException('App metadata singleton-tags must be a list of strings: ' . $file);
+            throw new RuntimeException('App metadata singleton-tags must be a list of strings.');
         }
 
         $parsed = [];
         foreach ($tags as $tag) {
             if (! is_string($tag)) {
-                throw new RuntimeException('App metadata singleton-tags must contain strings: ' . $file);
+                throw new RuntimeException('App metadata singleton-tags must contain strings.');
             }
             $tag = trim($tag);
             if ($tag === '') {
-                throw new RuntimeException('App metadata singleton-tags must not be empty: ' . $file);
+                throw new RuntimeException('App metadata singleton-tags must not be empty.');
             }
             if (preg_match('/[\x00-\x1f\x7f]/', $tag)) {
-                throw new RuntimeException('App metadata singleton-tags must not contain control characters: ' . $file);
+                throw new RuntimeException('App metadata singleton-tags must not contain control characters.');
             }
             if (in_array($tag, $parsed, true)) {
-                throw new RuntimeException('App metadata singleton-tags must not contain duplicates: ' . $file);
+                throw new RuntimeException('App metadata singleton-tags must not contain duplicates.');
             }
             $parsed[] = $tag;
         }
@@ -467,34 +496,32 @@ class ApplicationModel
     /**
      * @return list<array{name: string, category: string, required: bool}>
      */
-    private function metadataDependencies(mixed $dependencies, string $file): array
+    private function metadataDependencies(mixed $dependencies): array
     {
         if (! is_array($dependencies) || ! array_is_list($dependencies)) {
-            throw new RuntimeException('App metadata dependencies must be a list: ' . $file);
+            throw new RuntimeException('App metadata dependencies must be a list.');
         }
 
         $parsed = [];
         foreach ($dependencies as $dependency) {
             if (! $dependency instanceof \stdClass) {
-                throw new RuntimeException('App metadata dependencies must contain JSON objects: ' . $file);
+                throw new RuntimeException('App metadata dependencies must contain JSON objects.');
             }
             $dependency = (array) $dependency;
 
             $name = $dependency['name'] ?? null;
             if (! is_string($name) || trim($name) === '') {
-                throw new RuntimeException('App metadata dependency name must be a non-empty string: ' . $file);
+                throw new RuntimeException('App metadata dependency name must be a non-empty string.');
             }
 
             $category = $dependency['category'] ?? null;
             if (! is_string($category) || trim($category) === '') {
-                throw new RuntimeException('App metadata dependency category must be a non-empty string: ' . $file);
+                throw new RuntimeException('App metadata dependency category must be a non-empty string.');
             }
 
             $required = $dependency['required'] ?? true;
             if (! is_bool($required)) {
-                throw new RuntimeException(
-                    'App metadata dependency required must be true or false: ' . $file,
-                );
+                throw new RuntimeException('App metadata dependency required must be true or false.');
             }
 
             $parsed[] = [
@@ -1070,7 +1097,8 @@ class ApplicationModel
                     $existing = array_column($this->catalog(), null, 'path');
                     $projectNames = [];
                     foreach ($existing as $app) {
-                        $projectNames[trim(preg_replace('/[^a-z0-9_-]+/', '-', strtolower($app['name'])), '-')] = true;
+                        $projectNames[$this->projectSlug($app['name'])] = true;
+                        $projectNames[$this->projectSlug(basename(dirname($app['path'])))] = true;
                     }
                     $count = 0;
                     foreach ($entries as $path => $entry) {
@@ -1081,7 +1109,7 @@ class ApplicationModel
                         if (count(explode('/', $path)) < 3 || isset($existing[$path])) {
                             throw new RuntimeException('Uploaded apps need a category/app folder and must not replace existing catalog items.');
                         }
-                        $projectName = trim(preg_replace('/[^a-z0-9_-]+/', '-', strtolower(basename(dirname($path)))), '-');
+                        $projectName = $this->projectSlug(basename(dirname($path)));
                         if ($projectName === '' || isset($projectNames[$projectName])) {
                             throw new RuntimeException('Uploaded app names must be unique: ' . basename(dirname($path)));
                         }
@@ -1129,6 +1157,113 @@ class ApplicationModel
                 }
                 return 0;
         });
+    }
+
+    public function importCompose(string $name, string $subpath, string $compose): string
+    {
+        $name = trim($name);
+        $subpath = trim($subpath);
+        if ($name === '' || strlen($name) > 120 || preg_match('/[\x00-\x1f\x7f]/', $name)) {
+            throw new RuntimeException('Enter an application name of at most 120 characters.');
+        }
+        if ($subpath === '') {
+            throw new RuntimeException('Enter the application subpath.');
+        }
+        if (trim($compose) === '' || strlen($compose) > 1024 * 1024) {
+            throw new RuntimeException('Paste a Compose file of at most 1 MiB.');
+        }
+        $slug = $this->projectSlug($name);
+        if ($slug === '') {
+            throw new RuntimeException('The application name must contain letters or numbers.');
+        }
+
+        return $this->withLock(function () use ($name, $subpath, $compose, $slug): string {
+            $relative = 'other/' . $slug . '/compose.yaml';
+            $apps = $this->catalog();
+            $existing = array_column($apps, null, 'path');
+            if (isset($existing[$relative])) {
+                throw new RuntimeException('An application named ' . $name . ' already exists.');
+            }
+            foreach ($apps as $app) {
+                if ($this->projectSlug($app['name']) === $slug
+                    || $this->projectSlug(basename(dirname($app['path']))) === $slug) {
+                    throw new RuntimeException('An application named ' . $name . ' already exists.');
+                }
+            }
+
+            $staging = WRITEPATH . 'cache/catalog-' . bin2hex(random_bytes(16));
+            $directory = $staging . '/other/' . $slug;
+            if (! mkdir($directory, 0755, true)) {
+                throw new RuntimeException('Could not create the application staging directory.');
+            }
+
+            try {
+                $normalizedSubpath = $this->normalizeCaddyPath($subpath);
+                if ($normalizedSubpath === null) {
+                    throw new RuntimeException('Enter the application subpath.');
+                }
+                $subpath = $normalizedSubpath;
+
+                $composeFile = $directory . '/compose.yaml';
+                if (file_put_contents($composeFile, $compose) !== strlen($compose)
+                    || ! chmod($composeFile, 0644)) {
+                    throw new RuntimeException('Could not write the Compose file.');
+                }
+
+                try {
+                    $contents = json_encode(
+                        ['name' => $name, 'caddy_path' => $subpath],
+                        JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+                    ) . "\n";
+                } catch (\JsonException $exception) {
+                    throw new RuntimeException('The application metadata contains invalid text.', 0, $exception);
+                }
+                $metadataFile = $directory . '/metadata.json';
+                if (file_put_contents($metadataFile, $contents) !== strlen($contents)
+                    || ! chmod($metadataFile, 0644)) {
+                    throw new RuntimeException('Could not write the application metadata.');
+                }
+
+                $this->metadata($directory, $staging);
+
+                $catalog = WRITEPATH . 'catalog';
+                if (! is_dir($catalog) && ! mkdir($catalog, 0755)) {
+                    throw new RuntimeException('Could not create uploaded catalog storage.');
+                }
+                if (! chmod($staging, 0755)
+                    || ! rename($staging, $catalog . '/' . bin2hex(random_bytes(16)))) {
+                    throw new RuntimeException('Could not save the application.');
+                }
+
+                return $relative;
+            } finally {
+                if (is_dir($staging)) {
+                    $this->removeDirectory($staging);
+                }
+            }
+        });
+    }
+
+    private function projectSlug(string $name): string
+    {
+        return trim((string) preg_replace('/[^a-z0-9_-]+/', '-', strtolower($name)), '-');
+    }
+
+    private function removeDirectory(string $directory): void
+    {
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        foreach ($files as $file) {
+            $removed = $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+            if (! $removed) {
+                log_message('error', 'Could not remove staged catalog entry: {path}', ['path' => $file->getPathname()]);
+            }
+        }
+        if (! rmdir($directory)) {
+            log_message('error', 'Could not remove catalog staging directory.');
+        }
     }
 
     /**

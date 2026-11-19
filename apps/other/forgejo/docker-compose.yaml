@@ -1,0 +1,127 @@
+services:
+  forgejo-init:
+    image: alpine:3.22
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /runner
+        chown -R 1000:1000 /runner
+    volumes:
+      - forgejo_runner_data:/runner
+
+  forgejo:
+    build:
+      context: .
+    image: localhost-forgejo:latest
+    restart: unless-stopped
+    depends_on:
+      forgejo-init:
+        condition: service_completed_successfully
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      SSH_PORT: "${SSH_PORT:-2222}"
+    expose:
+      - "${SSH_PORT:-2222}"
+    volumes:
+      - forgejo_data:/data
+      - global-env:/global-env:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - internal
+    labels:
+      - "caddy=:90"
+      - "caddy_ingress_network=${CADDY_NETWORK:-localhost_internal}"
+      - "caddy.8_redir=/forgejo /forgejo/ permanent"
+      - "caddy.8_handle_path=/forgejo/*"
+      - "caddy.8_handle_path.0_reverse_proxy={{upstreams 3000}}"
+      - "caddy.8_handle_path.0_reverse_proxy.header_up=Accept-Encoding identity"
+      # The core Caddy container must expose the chosen SSH_PORT for Git over SSH.
+      - "caddy_1="
+      - "caddy_1.layer4.:${SSH_PORT:-2222}.route.proxy={{upstreams ${SSH_PORT:-2222}}}"
+
+  forgejo-setup:
+    image: data.forgejo.org/forgejo/forgejo:17
+    restart: "no"
+    user: "1000:1000"
+    depends_on:
+      forgejo:
+        condition: service_healthy
+    environment:
+      HOME: /data/git
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-forgejo}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in env}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
+      RUNNER_LABELS: "${RUNNER_LABELS:-docker:docker://node:24-bookworm,ubuntu-latest:docker://node:24-bookworm}"
+    volumes:
+      - forgejo_data:/data
+      - forgejo_runner_data:/runner
+      - global-env:/global-env:ro
+      - ./setup.sh:/setup.sh:ro
+    entrypoint: ["/bin/sh", "/setup.sh"]
+    networks:
+      - internal
+
+  docker:
+    image: docker:29-dind
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+    volumes:
+      - forgejo_dind_certs:/certs
+      - forgejo_dind_data:/var/lib/docker
+    healthcheck:
+      test: ["CMD-SHELL", "docker info >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - internal
+
+  forgejo-runner:
+    image: data.forgejo.org/forgejo/runner:13
+    restart: unless-stopped
+    depends_on:
+      forgejo-setup:
+        condition: service_completed_successfully
+      docker:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: tcp://docker:2376
+      DOCKER_CERT_PATH: /certs/client
+      DOCKER_TLS_VERIFY: "1"
+    volumes:
+      - forgejo_runner_data:/data
+      - forgejo_dind_certs:/certs:ro
+    command: ["forgejo-runner", "daemon", "--config", "/data/config.yml"]
+    networks:
+      - internal
+
+volumes:
+  forgejo_data:
+    driver: local
+  forgejo_runner_data:
+    driver: local
+  forgejo_dind_certs:
+    driver: local
+  forgejo_dind_data:
+    driver: local
+  global-env:
+    external: true
+    name: "${GLOBAL_ENV_VOLUME:-localhost_global_env}"
+
+networks:
+  internal:
+    external: true
+    name: "${CADDY_NETWORK:-localhost_internal}"

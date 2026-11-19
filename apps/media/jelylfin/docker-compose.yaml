@@ -13,6 +13,10 @@ services:
       - data:/data
       - jellyfin_data:/config
       - global-env:/global-env:ro
+    # Reuse the shared network instead of letting Compose create a project
+    # bridge, which changes host interfaces while the start request is open.
+    networks:
+      - internal
 
   jellyfin:
     build:

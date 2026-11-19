@@ -140,22 +140,19 @@ final class AppCategoryTest extends CIUnitTestCase
 
     public function testDeployDialogListsApplicationsThatWillBeBlocked(): void
     {
-        $html = view('partials/app_card', [
+        $html = view('partials/deploy_modal', [
             'app' => $this->apps['First'],
-            'isRunning' => false,
-            'canManage' => true,
-            'wouldBlock' => ['Second'],
+            'environmentFields' => null,
+            'willBlock' => ['Second'],
         ]);
         $this->assertStringContainsString('Applications that will be blocked', $html);
         $this->assertStringContainsString('<li>Second</li>', $html);
-        $this->assertStringContainsString('data-deploy-app', $html);
-        $this->assertStringContainsString('data-deploy-confirm', $html);
+        $this->assertStringContainsString('data-modal-primary', $html);
 
-        $empty = view('partials/app_card', [
+        $empty = view('partials/deploy_modal', [
             'app' => $this->apps['Second'],
-            'isRunning' => false,
-            'canManage' => true,
-            'wouldBlock' => [],
+            'environmentFields' => null,
+            'willBlock' => [],
         ]);
         $this->assertStringContainsString('No other applications share a singleton tag', $empty);
 
@@ -163,31 +160,41 @@ final class AppCategoryTest extends CIUnitTestCase
             'app' => $this->apps['First'],
             'isRunning' => false,
             'canManage' => true,
-            'wouldBlock' => [],
         ]);
-        $this->assertStringContainsString('data-deploy-app', $tagged);
+        $this->assertStringContainsString(
+            'hx-get="' . esc(site_url('apps/' . $this->apps['First']['id'] . '/configure'), 'attr') . '"',
+            $tagged,
+        );
+        $this->assertStringContainsString('hx-indicator="#modal-loading"', $tagged);
 
         $plain = view('partials/app_card', [
             'app' => $this->apps['Unlimited'],
             'isRunning' => false,
             'canManage' => true,
-            'wouldBlock' => [],
         ]);
+        $this->assertStringNotContainsString('hx-get=', $plain);
         $this->assertStringNotContainsString('class="modal"', $plain);
-        $this->assertStringNotContainsString('data-deploy-app', $plain);
         $this->assertStringContainsString('type="submit"', $plain);
     }
 
     public function testCatalogPassesBlockedApplicationsToTheDeployDialog(): void
     {
-        $result = $this->withSession(['ldap_user' => [
+        $session = ['ldap_user' => [
             'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
-        ]])->get('/category/files');
-        $result->assertStatus(200);
-        $html = $result->response()->getBody();
-        $this->assertStringContainsString('Applications that will be blocked', $html);
-        $this->assertStringContainsString('<li>Second</li>', $html);
-        $this->assertStringContainsString('<li>First</li>', $html);
+        ]];
+        $first = $this->withSession($session)
+            ->get('apps/' . $this->apps['First']['id'] . '/configure');
+        $first->assertStatus(200);
+        $firstHtml = $first->response()->getBody();
+        $this->assertStringContainsString('Applications that will be blocked', $firstHtml);
+        $this->assertStringContainsString('<li>Second</li>', $firstHtml);
+        $this->assertStringNotContainsString('<li>First</li>', $firstHtml);
+
+        $second = $this->withSession($session)
+            ->get('apps/' . $this->apps['Second']['id'] . '/configure');
+        $second->assertStatus(200);
+        $secondHtml = $second->response()->getBody();
+        $this->assertStringContainsString('<li>First</li>', $secondHtml);
     }
 
     public function testHeaderUsesNavbarAndRunningCountLinksToActivity(): void
@@ -197,6 +204,12 @@ final class AppCategoryTest extends CIUnitTestCase
             'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
         ]])->get('/');
         $result->assertStatus(200);
+        $html = $result->response()->getBody();
+        $this->assertStringContainsString('id="host-stats"', $html);
+        $this->assertStringContainsString(
+            'hx-get="' . esc(site_url('host/stats'), 'attr') . '"',
+            $html,
+        );
         $document = new DOMDocument();
         @$document->loadHTML($result->response()->getBody());
         $xpath = new DOMXPath($document);
@@ -372,25 +385,69 @@ final class AppCategoryTest extends CIUnitTestCase
         $page->assertStatus(200);
         $html = $page->response()->getBody();
         $this->assertStringContainsString('Application activity</h1>', $html);
-        $this->assertStringContainsString('data-application-activity=', $html);
+        $this->assertStringContainsString('data-activity-panel', $html);
+        $this->assertStringContainsString('hx-get="', $html);
+        $this->assertStringContainsString('hx-trigger="load every 3s', $html);
+        $this->assertStringContainsString('hx-target="#activity-rows"', $html);
+        $this->assertStringContainsString('hx-swap="morph"', $html);
         $this->assertStringNotContainsString('Delete data</button>', $html);
-        $document = new DOMDocument();
-        @$document->loadHTML($html);
-        $this->assertSame(0, (new DOMXPath($document))->query('//*[@data-activity-logs]')->length);
         $feed = $this->get('activity/output');
-        $feed->assertStatus(200);
-        $this->assertSame(['applications' => []], json_decode($feed->response()->getBody(), true));
+        $feed->assertStatus(286);
+        $feedHtml = $feed->response()->getBody();
+        $this->assertStringContainsString('id="activity-rows"', $feedHtml);
+        $this->assertStringContainsString('No application containers or operations to show.', $feedHtml);
+        $this->assertStringNotContainsString('data-activity-logs', $feedHtml);
         $this->assertStringContainsString('no-store', $feed->response()->getHeaderLine('Cache-Control'));
+        $this->assertStringStartsWith('text/html', $feed->response()->getHeaderLine('Content-Type'));
         $admin = $this->withSession(['ldap_user' => [
             'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
         ]])->get('activity');
         $admin->assertStatus(200);
-        $document = new DOMDocument();
-        @$document->loadHTML($admin->response()->getBody());
-        $this->assertSame(1, (new DOMXPath($document))->query('//*[@data-activity-logs]')->length);
-        $this->assertStringContainsString('data-delete-data-form', $admin->response()->getBody());
-        $this->assertStringContainsString('Delete volumes permanently', $admin->response()->getBody());
-        $this->assertStringContainsString('This action is destructive and cannot be undone.', $admin->response()->getBody());
+        $this->assertStringContainsString('id="modal-loading"', $admin->response()->getBody());
+        putenv('CATEGORY_TEST_ACTIVITY=' . json_encode([
+            $this->activityContainer($this->apps['First']['project'], 'running'),
+        ]));
+        $adminFeed = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('activity/output');
+        $adminFeed->assertStatus(286);
+        $adminHtml = $adminFeed->response()->getBody();
+        $this->assertStringContainsString('data-activity-logs', $adminHtml);
+        $this->assertStringContainsString(
+            'hx-get="' . esc(site_url('apps/' . $this->apps['First']['id'] . '/delete-data'), 'attr') . '"',
+            $adminHtml,
+        );
+        $this->assertStringContainsString('hx-indicator="#modal-loading"', $adminHtml);
+        $this->assertStringContainsString('Delete data', $adminHtml);
+
+        $deleteModal = $this->withSession(['ldap_user' => [
+            'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
+        ]])->get('apps/' . $this->apps['First']['id'] . '/delete-data');
+        $deleteModal->assertStatus(200);
+        $deleteHtml = $deleteModal->response()->getBody();
+        $this->assertStringContainsString('class="modal is-active"', $deleteHtml);
+        $this->assertStringContainsString('closeHtmxModal()', $deleteHtml);
+        $this->assertStringContainsString('Delete volumes permanently', $deleteHtml);
+        $this->assertStringContainsString('This action is destructive and cannot be undone.', $deleteHtml);
+    }
+
+    public function testActivityFeedKeepsPollingWhileAnApplicationIsStarting(): void
+    {
+        putenv('CATEGORY_TEST_ACTIVITY=' . json_encode([
+            $this->activityContainer($this->apps['First']['project'], 'created'),
+        ]));
+        $result = $this->withSession(['ldap_user' => [
+            'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]])->get('activity/output');
+        $result->assertStatus(200);
+        $this->assertStringContainsString('Starting', $result->response()->getBody());
+    }
+
+    public function testHtmxRequestsAreRedirectedToLoginWhenTheSessionExpires(): void
+    {
+        $redirect = $this->withHeaders(['HX-Request' => 'true'])->get('activity/output');
+        $redirect->assertStatus(200);
+        $this->assertSame(site_url('login'), $redirect->response()->getHeaderLine('HX-Redirect'));
     }
 
     public function testActivityFeedReportsDockerErrorsInsteadOfAnEmptyList(): void
@@ -400,7 +457,10 @@ final class AppCategoryTest extends CIUnitTestCase
             'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
         ]])->get('activity/output');
         $result->assertStatus(500);
-        $this->assertArrayHasKey('error', json_decode($result->response()->getBody(), true));
+        $this->assertStringContainsString(
+            'Could not read application activity. Try again shortly.',
+            $result->response()->getBody(),
+        );
     }
 
     public function testProjectNamesAreHumanReadable(): void
@@ -732,28 +792,44 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->store->logs($this->apps['First']);
     }
 
-    public function testAdminsCanReadLogsAsUncachedPlainText(): void
+    public function testAdminsCanReadLogsAsUncachedMorphableHtml(): void
     {
         putenv('CATEGORY_TEST_PROJECT=' . $this->apps['First']['project']);
         $result = $this->withSession(['ldap_user' => [
             'username' => 'admin', 'isAdmin' => true, 'expiresAt' => time() + 3600,
         ]])->get('apps/' . $this->apps['First']['id'] . '/logs/output');
         $result->assertStatus(200);
-        $this->assertStringStartsWith('text/plain', $result->response()->getHeaderLine('Content-Type'));
+        $this->assertStringStartsWith('text/html', $result->response()->getHeaderLine('Content-Type'));
         $this->assertSame('no-store', $result->response()->getHeaderLine('Cache-Control'));
+        $this->assertStringContainsString('id="logs"', $result->response()->getBody());
+        $this->assertMatchesRegularExpression('/<span id="log-[0-9a-f]{16}-1">/', $result->response()->getBody());
         $this->assertStringContainsString('server warning', $result->response()->getBody());
+    }
+
+    public function testLogLinesKeepStableIdsWhenOutputRotates(): void
+    {
+        $method = new ReflectionMethod(\App\Libraries\LoggingModel::class, 'logLines');
+        $model = new \App\Libraries\LoggingModel();
+
+        $before = $method->invoke($model, "first\nsecond\n");
+        $after = $method->invoke($model, "second\nthird\n");
+        $duplicates = $method->invoke($model, "same\nsame\n");
+
+        $this->assertSame(["first\n", "second\n"], array_column($before, 'text'));
+        $this->assertSame($before[1]['id'], $after[0]['id']);
+        $this->assertNotSame($duplicates[0]['id'], $duplicates[1]['id']);
     }
 
     public function testLogDisplayRemovesTerminalCommandsAndPreservesUnicode(): void
     {
-        $method = new ReflectionMethod(\App\Controllers\Home::class, 'plainTextLogs');
+        $method = new ReflectionMethod(\App\Libraries\LoggingModel::class, 'plainTextLogs');
         $input = "timestamp \x1b[?2027\$p\x1b[?1h\x1b=\x1b[?2004h"
             . "\x1b[K\x1b[1m\x1b[94m[I]\x1b[0m café \u{F7EF} <script>\r\n"
             . "\x1b]0;window title\x07next\x1b]8;;https://example.com\x1b\\"
             . "link\x1b]8;;\x1b\\\rfinished";
         $this->assertSame(
             "timestamp [I] café \u{F7EF} <script>\nnextlink\nfinished",
-            $method->invoke(new \App\Controllers\Home(), $input),
+            $method->invoke(new \App\Libraries\LoggingModel(), $input),
         );
     }
 
@@ -783,7 +859,8 @@ final class AppCategoryTest extends CIUnitTestCase
         $result->assertStatus(200);
         $this->assertSame('no-store', $result->response()->getHeaderLine('Cache-Control'));
         $this->assertStringContainsString('First logs', $result->response()->getBody());
-        $this->assertStringContainsString('data-app-logs', $result->response()->getBody());
+        $this->assertStringContainsString('data-log-output', $result->response()->getBody());
+        $this->assertStringContainsString('hx-swap="morph"', $result->response()->getBody());
         $this->assertStringContainsString('Back to applications', $result->response()->getBody());
     }
 
@@ -972,13 +1049,22 @@ final class AppCategoryTest extends CIUnitTestCase
         $html = view('partials/app_card', [
             'app' => $app, 'isRunning' => false, 'canManage' => true, 'environmentFields' => $savedFields,
         ]);
-        $this->assertStringContainsString('data-configure-app', $html);
-        $this->assertStringContainsString('class="modal"', $html);
-        $this->assertStringContainsString('class="modal-background"', $html);
-        $this->assertStringContainsString('class="modal-card-body"', $html);
-        $this->assertStringContainsString('name="environment[SERVER_PORT]"', $html);
-        $this->assertStringContainsString('value="23456"', $html);
-        $this->assertStringContainsString('Save and start', $html);
+        $this->assertStringContainsString(
+            'hx-get="' . esc(site_url('apps/' . $app['id'] . '/configure'), 'attr') . '"',
+            $html,
+        );
+        $this->assertStringContainsString('hx-target="#modal-container"', $html);
+        $this->assertStringNotContainsString('class="modal"', $html);
+
+        $modal = view('partials/deploy_modal', [
+            'app' => $app, 'environmentFields' => $savedFields, 'willBlock' => [],
+        ]);
+        $this->assertStringContainsString('class="modal is-active"', $modal);
+        $this->assertStringContainsString('class="modal-background"', $modal);
+        $this->assertStringContainsString('class="modal-card-body"', $modal);
+        $this->assertStringContainsString('name="environment[SERVER_PORT]"', $modal);
+        $this->assertStringContainsString('value="23456"', $modal);
+        $this->assertStringContainsString('Save and start', $modal);
     }
 
     public function testUnknownEnvironmentVariablesCannotBeSaved(): void
@@ -1063,7 +1149,7 @@ final class AppCategoryTest extends CIUnitTestCase
         );
         $session->expects($this->once())->method('setFlashdata')->with('success', 'First started.');
         \CodeIgniter\Config\Services::injectMock('session', $session);
-        $controller = new \App\Controllers\Home();
+        $controller = new \App\Controllers\ApplicationController();
         $controller->initController(service('request'), service('response'), service('logger'));
         $controller->install($this->apps['First']['id']);
         $this->assertFileExists($this->directory . '/calls');
@@ -1082,9 +1168,9 @@ final class AppCategoryTest extends CIUnitTestCase
         $document = new DOMDocument();
         @$document->loadHTML($html);
         $xpath = new DOMXPath($document);
-        $second = site_url('apps/' . $this->apps['Second']['id'] . '/install');
+        $secondConfigure = site_url('apps/' . $this->apps['Second']['id'] . '/configure');
         $unlimited = site_url('apps/' . $this->apps['Unlimited']['id'] . '/install');
-        $this->assertSame(1, $xpath->query('//form[@action="' . $second . '"]/button[@disabled]')->length);
+        $this->assertSame(1, $xpath->query('//button[@hx-get="' . $secondConfigure . '" and @disabled]')->length);
         $this->assertSame(1, $xpath->query('//form[@action="' . $unlimited . '"]/button[not(@disabled)]')->length);
         $this->assertStringNotContainsString('Player logo', $html);
         $this->assertStringNotContainsString('Reader logo', $html);

@@ -17,7 +17,7 @@
         <div class="level mb-5">
             <div class="level-left">
                 <div>
-                    <h1 class="title is-4 mb-1">Available apps</h1>
+                    <h1 class="title is-4 mb-1">Available services</h1>
                 </div>
             </div>
             <div class="level-right">
@@ -40,25 +40,6 @@
                 <div class="control"><button class="button is-link" type="submit">Search</button></div>
             </div>
         </form>
-        <?php if ($canManage ?? false): ?>
-            <form action="<?= esc(site_url('catalog/upload'), 'attr') ?>" method="post" enctype="multipart/form-data" class="mb-5">
-                <?= csrf_field() ?>
-                <label class="label" for="catalog-zip">Upload catalog ZIP</label>
-                <p class="help mb-2">Maximum ZIP size: 50 MiB. Upload a custom catalog to start up applications from.</p>
-                <div class="field is-grouped">
-                    <div class="control">
-                        <div class="file">
-                            <label class="file-label">
-                                <input class="file-input" id="catalog-zip" type="file" name="catalog" accept=".zip,application/zip" required>
-                                <span class="file-cta"><span class="file-label">Choose ZIP</span></span>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="control"><button class="button is-link" type="submit">Upload catalog</button></div>
-                </div>
-            </form>
-        <?php endif ?>
-
         <?php if ($apps === []): ?>
             <div class="notification is-light">No Compose files were found in the apps directory.</div>
         <?php else: ?>
@@ -78,11 +59,13 @@
                         </ul>
                         <?php if ($canManage ?? false): ?>
                             <form action="<?= esc(site_url('catalog/stop-all'), 'attr') ?>" method="post"
-                                  class="mt-5" data-pending-label="Stopping all...">
+                                  class="mt-5">
                                 <?= csrf_field() ?>
                                 <button class="button is-danger is-light is-fullwidth" type="submit"
-                                        aria-live="polite">Stop all apps</button>
+                                        aria-live="polite">Stop all services</button>
                             </form>
+                            <a class="button is-link is-light is-fullwidth mt-3"
+                               href="<?= esc(site_url('catalog/add'), 'attr') ?>">Add catalog item</a>
                         <?php endif ?>
                     </nav>
                 </aside>
@@ -95,7 +78,6 @@
                         'isRunning' => $running[$app['id']] ?? false,
                         'canManage' => $canManage ?? false,
                         'blockedBy' => $installationBlocks[$app['id']] ?? null,
-                        'wouldBlock' => $deploymentBlocks[$app['id']] ?? [],
                         'environmentFields' => $environments[$app['id']] ?? null,
                     ]) ?>
                 <?php endforeach ?>

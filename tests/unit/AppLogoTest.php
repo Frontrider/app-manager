@@ -75,6 +75,9 @@ final class AppLogoTest extends CIUnitTestCase
 
     public function testCatalogUsesConsistentLightThemeAndLogo(): void
     {
+        session()->set('ldap_user', [
+            'username' => 'theme-' . bin2hex(random_bytes(6)), 'isAdmin' => false, 'expiresAt' => time() + 3600,
+        ]);
         $html = view('browser', [
             'apps'    => [$this->catalogApp],
             'running' => [$this->catalogApp['id'] => false],
@@ -82,9 +85,9 @@ final class AppLogoTest extends CIUnitTestCase
             'selectedCategory' => 'General',
             'installationBlocks' => [],
         ]);
+        session()->remove('ldap_user');
 
         $this->assertStringContainsString('data-theme="light"', $html);
-        $this->assertStringContainsString('color-scheme: light', $html);
         $this->assertStringContainsString(
             esc(site_url('apps/' . $this->catalogApp['id'] . '/logo'), 'attr'),
             $html,
@@ -92,12 +95,19 @@ final class AppLogoTest extends CIUnitTestCase
         $this->assertStringContainsString('class="app-logo"', $html);
         $this->assertStringContainsString('id="theme-toggle"', $html);
         $this->assertStringContainsString('type="checkbox" role="switch"', $html);
-        $this->assertStringContainsString('themeToggle.checked', $html);
-        $this->assertStringContainsString('localStorage.getItem(\'localhost-theme\')', $html);
-        $this->assertStringContainsString('localStorage.setItem(\'localhost-theme\', theme)', $html);
-        $this->assertStringContainsString(':root[data-theme="dark"]', $html);
-        $this->assertStringContainsString('background: var(--app-background)', $html);
-        $this->assertStringContainsString('background: var(--app-logo-background)', $html);
+        $this->assertStringContainsString('class="theme-control"', $html);
+        $this->assertStringContainsString('class="theme-track"', $html);
+        $this->assertStringContainsString('class="theme-thumb"', $html);
+        $this->assertStringContainsString('hx-post="' . esc(site_url('settings/dark_mode'), 'attr') . '"', $html);
+        $this->assertStringContainsString(
+            'hx-on::after-request="setTimeout(() => window.location.reload(), 500)"',
+            $html,
+        );
+        $this->assertStringContainsString('transition: transform 0.5s ease', $html);
+        $this->assertMatchesRegularExpression('#/styles/style\.css\?v=\d+#', $html);
+        $css = file_get_contents(FCPATH . 'styles/style.css');
+        $this->assertStringContainsString('color-scheme: light', $css);
+        $this->assertStringContainsString(':root[data-theme="dark"]', $css);
     }
 
     public function testCardLinksToOfficialWebsiteWhenStoppedAndCaddyPathWhenRunning(): void
@@ -172,7 +182,20 @@ final class AppLogoTest extends CIUnitTestCase
     {
         file_put_contents($this->directory . '/metadata.json', '{"caddy_path":"//example.org/"}');
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('caddy_path must be a same-domain absolute path');
+        $this->expectExceptionMessage('caddy_path must be a same-domain subpath');
         (new ApplicationModel())->find($this->catalogApp['id']);
+    }
+
+    public function testMetadataErrorsDoNotExposeInternalPaths(): void
+    {
+        file_put_contents($this->directory . '/metadata.json', '{"caddy_path":"//example.org/"}');
+
+        try {
+            (new ApplicationModel())->find($this->catalogApp['id']);
+            $this->fail('Invalid metadata should be rejected.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringNotContainsString($this->directory, $exception->getMessage());
+            $this->assertStringNotContainsString('metadata.json', $exception->getMessage());
+        }
     }
 }

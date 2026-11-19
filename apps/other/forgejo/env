@@ -1,0 +1,14 @@
+# Initial administrator username. Forgejo does not allow "admin".
+ADMIN_USERNAME=forgejo
+
+# Initial administrator password. Used only when the account is first created.
+ADMIN_PASSWORD=
+
+# Optional administrator email. Defaults to ADMIN_USERNAME@<domain>.
+ADMIN_EMAIL=
+
+# Labels advertised by the bundled runner. The default can run Docker-based workflows.
+RUNNER_LABELS=docker:docker://node:24-bookworm,ubuntu-latest:docker://node:24-bookworm
+
+# Public Git SSH port. The core Caddy container must expose this TCP port.
+SSH_PORT=2222

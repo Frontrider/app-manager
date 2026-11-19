@@ -65,15 +65,67 @@ class App extends BaseConfig
             throw new \RuntimeException('Could not read the global environment domain file.');
         }
 
-        $domain = trim($contents);
+        $domain = self::normalizeBaseUrlAuthority(trim($contents));
         $scheme = self::httpsDisabled() ? 'http' : (getenv('APP_SCHEME') ?: 'https');
 
-        if (filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false
-            || $domain === '' || ! in_array($scheme, ['http', 'https'], true)) {
+        if ($domain === null || ! in_array($scheme, ['http', 'https'], true)) {
             throw new \RuntimeException('The global environment domain or APP_SCHEME is invalid.');
         }
 
         $this->baseURL = $scheme . '://' . $domain . '/';
+    }
+
+    private static function normalizeBaseUrlAuthority(string $domain): ?string
+    {
+        if ($domain === '' || preg_match('/[\s\/\\\\?#@]/', $domain)) {
+            return null;
+        }
+
+        $host = $domain;
+        $port = null;
+        if (str_starts_with($domain, '[')) {
+            if (! preg_match('/^\[([0-9a-fA-F:.]+)\](?::(\d{1,5}))?$/D', $domain, $matches)) {
+                return null;
+            }
+            $host = $matches[1];
+            $port = $matches[2] ?? null;
+            if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+                return null;
+            }
+            $host = '[' . $host . ']';
+        } elseif (substr_count($domain, ':') === 1) {
+            [$host, $port] = explode(':', $domain, 2);
+            if ($port === '' || ! ctype_digit($port)) {
+                return null;
+            }
+        } elseif (substr_count($domain, ':') > 1) {
+            $host = $domain;
+            if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+                return null;
+            }
+            $host = '[' . $host . ']';
+        }
+
+        if ($port !== null && ((int) $port < 1 || (int) $port > 65535)) {
+            return null;
+        }
+
+        $bareHost = trim($host, '[]');
+        if (filter_var($bareHost, FILTER_VALIDATE_IP) === false
+            && ! self::isHostname($bareHost)) {
+            return null;
+        }
+
+        return $port === null ? $host : $host . ':' . $port;
+    }
+
+    private static function isHostname(string $host): bool
+    {
+        return strlen($host) <= 253
+            && preg_match(
+                '/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/iD',
+                $host,
+            ) === 1;
     }
 
     /**

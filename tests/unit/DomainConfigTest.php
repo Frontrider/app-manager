@@ -82,6 +82,24 @@ final class DomainConfigTest extends CIUnitTestCase
         new App();
     }
 
+    public function testLocalHostnamesAndAddressesAreAccepted(): void
+    {
+        $domains = [
+            'localhost' => 'https://localhost/',
+            'localhost:8082' => 'https://localhost:8082/',
+            '127.0.0.1' => 'https://127.0.0.1/',
+            '127.0.0.1:8082' => 'https://127.0.0.1:8082/',
+            '192.168.1.20:8080' => 'https://192.168.1.20:8080/',
+            '[::1]:8082' => 'https://[::1]:8082/',
+            '::1' => 'https://[::1]/',
+        ];
+
+        foreach ($domains as $domain => $expected) {
+            file_put_contents($this->directory . '/domain', $domain);
+            $this->assertSame($expected, (new App())->baseURL, $domain);
+        }
+    }
+
     public function testExplicitUrlOverridesDomainFile(): void
     {
         putenv('app_baseURL=https://override.example.org/');

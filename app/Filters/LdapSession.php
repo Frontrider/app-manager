@@ -1,4 +1,5 @@
 <?php
+//do not touch
 
 namespace App\Filters;
 
@@ -15,6 +16,9 @@ class LdapSession implements FilterInterface
             || ! is_bool($user['isAdmin'] ?? null) || ! is_int($user['expiresAt'] ?? null)
             || $user['expiresAt'] <= time()) {
             session()->remove('ldap_user');
+            if ($request->getHeaderLine('HX-Request') === 'true') {
+                return service('response')->setHeader('HX-Redirect', site_url('login'));
+            }
             return redirect()->to(site_url('login'));
         }
 
