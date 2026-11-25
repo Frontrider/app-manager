@@ -9,8 +9,10 @@ Intended to be as simple as I can make it, while still being powerful enough.
 
 # Domain support
 
-All applications serving http are deployed on a subpath. This is a deliberate design decision to make [tailscale](https://tailscale.com/) setups simpler (only need to set up 1 api key), 
-make it work with [anywherelan](https://anywherelan.com/) and also allow it to work with any DDNS providers.
+Every service is deployed behind the same domain, on either a subpath or a separate port. 
+Subdomains are explicitly not supported.
+This is because a lot of the free solutions to get access to your servers don't give you subdomains (noip, anywherelan, etc)
+so simply not building for that makes the system more predictable.
 
-Some servers don't work with this setup, but it is a worthy sacrifice to simplify operations.
+Some services don't work with this setup, but it is a worthy sacrifice to cover as many cases as possible.
 
