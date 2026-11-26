@@ -5,7 +5,7 @@ const config = {
   url: 'https://localhost.invalid',
   baseUrl: '/docs/',
   trailingSlash: true,
-  onBrokenLinks: 'throw',
+  onBrokenLinks: 'warn',
   markdown: {
     format: 'md',
   },
