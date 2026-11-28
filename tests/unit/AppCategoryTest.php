@@ -19,7 +19,7 @@ final class AppCategoryTest extends CIUnitTestCase
         $this->directory = sys_get_temp_dir() . '/app-category-' . bin2hex(random_bytes(8));
         foreach (['APPS_DIR', 'DOCKER_BIN', 'CATEGORY_TEST_PROJECT', 'CATEGORY_TEST_CALLS',
             'CATEGORY_TEST_SESSION_LOCK', 'CATEGORY_TEST_VERBOSE', 'CATEGORY_TEST_ACTIVITY',
-            'CATEGORY_TEST_OPERATION'] as $name) {
+            'CATEGORY_TEST_OPERATION', 'CATEGORY_TEST_COMPOSE_FAIL_ONCE'] as $name) {
             $this->environment[$name] = getenv($name);
         }
         foreach (['files/first', 'files/second', 'video/player',
@@ -46,6 +46,7 @@ final class AppCategoryTest extends CIUnitTestCase
         putenv('CATEGORY_TEST_VERBOSE');
         putenv('CATEGORY_TEST_ACTIVITY');
         putenv('CATEGORY_TEST_OPERATION');
+        putenv('CATEGORY_TEST_COMPOSE_FAIL_ONCE');
         $this->store = new ApplicationModel();
         $this->apps = array_column($this->store->catalog(), null, 'name');
     }
@@ -356,6 +357,28 @@ final class AppCategoryTest extends CIUnitTestCase
             $this->assertStringContainsString('simulated failure', $exception->getMessage());
         }
         $this->assertSame([], $this->store->applicationActivity());
+    }
+
+    public function testStartFailureRetriesWithRebuildOnceEvenAfterPriorDeployment(): void
+    {
+        $app = $this->apps['First'];
+        $this->store->install($app);
+
+        putenv('CATEGORY_TEST_COMPOSE_FAIL_ONCE=1');
+        $this->store->install($app);
+
+        $calls = array_slice(array_map(
+            static fn (string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            file($this->directory . '/calls'),
+        ), -4);
+        $this->assertSame(['up', '-d'], array_slice($calls[0], -2));
+        $this->assertSame(['pull', '--ignore-buildable'], array_slice($calls[1], -2));
+        $this->assertSame(['build', '--pull', '--no-cache'], array_slice($calls[2], -3));
+        $this->assertSame(
+            ['up', '-d', '--force-recreate', '--always-recreate-deps', '--remove-orphans'],
+            array_slice($calls[3], -5),
+        );
+        $this->assertFileDoesNotExist(WRITEPATH . 'app-startup-failures/' . $app['id'] . '.log');
     }
 
     public function testDeleteDataRemovesOnlyComposeProjectVolumesAndPublishesOperation(): void
@@ -859,7 +882,7 @@ final class AppCategoryTest extends CIUnitTestCase
         );
     }
 
-    public function testNonAdminsCannotReadLogsOrSeeLogLinks(): void
+    public function testNonAdminsCannotReadLogsOrSeeTheLogsButton(): void
     {
         $this->withSession(['ldap_user' => [
             'username' => 'reader', 'isAdmin' => false, 'expiresAt' => time() + 3600,
@@ -868,12 +891,14 @@ final class AppCategoryTest extends CIUnitTestCase
         $html = view('partials/app_card', [
             'app' => $this->apps['First'], 'isRunning' => true, 'canManage' => false,
         ]);
-        $this->assertStringNotContainsString('View logs', $html);
+        $this->assertStringNotContainsString('>Logs<', $html);
         $html = view('partials/app_card', [
             'app' => $this->apps['First'], 'isRunning' => false, 'canManage' => true,
         ]);
-        $this->assertStringContainsString('View logs', $html);
+        $this->assertStringContainsString('>Logs</a>', $html);
         $this->assertStringContainsString(site_url('apps/' . $this->apps['First']['id'] . '/logs'), $html);
+        $this->assertStringNotContainsString('Refresh service', $html);
+        $this->assertStringNotContainsString(site_url('apps/' . $this->apps['First']['id'] . '/refresh'), $html);
         $this->assertStringNotContainsString('data-app-logs', $html);
     }
 

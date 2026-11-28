@@ -1,6 +1,6 @@
 <?php
 
-use App\Libraries\ApplicationModel;
+use App\Libraries\Catalog;
 use CodeIgniter\Router\RouteCollection;
 
 /** @var RouteCollection $routes */
@@ -12,4 +12,4 @@ $routes->get('seed', static function () {
 });
 $routes->get('/', 'Home::index');
 $routes->get('deploy/(:segment)', 'ApplicationController::install/$1');
-$routes->get('app-id', static fn () => (new ApplicationModel())->catalog()[0]['id']);
+$routes->get('app-id', static fn () => (new Catalog())->catalog()[0]['id']);

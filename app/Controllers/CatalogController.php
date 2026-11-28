@@ -2,7 +2,7 @@
 
 namespace App\Controllers;
 
-use App\Libraries\ApplicationModel;
+use App\Libraries\Management;
 use CodeIgniter\HTTP\ResponseInterface;
 use RuntimeException;
 
@@ -28,7 +28,7 @@ class CatalogController extends BaseController
             if (strtolower($upload->getClientExtension()) !== 'zip') {
                 throw new RuntimeException('Upload a ZIP archive.');
             }
-            $count = (new ApplicationModel())->importCatalog($upload->getTempName());
+            $count = (new Management())->importCatalog($upload->getTempName());
             $level = 'success';
             $message = $count . ' catalog item(s) added.';
             $destination = site_url('/');
@@ -56,7 +56,7 @@ class CatalogController extends BaseController
                 throw new RuntimeException('Enter an application name, subpath, and Compose file.');
             }
 
-            (new ApplicationModel())->importCompose($name, $subpath, $compose);
+            (new Management())->importCompose($name, $subpath, $compose);
             $level = 'success';
             $message = trim($name) . ' added under Other.';
             $destination = site_url('category/other');

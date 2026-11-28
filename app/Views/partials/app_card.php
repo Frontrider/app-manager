@@ -30,8 +30,7 @@
             <?php endif ?>
             <?php
             $hasLinks = ($isRunning && $app['caddyPath'] !== null)
-                || $app['website'] !== null
-                || ($canManage ?? false);
+                || $app['website'] !== null;
             $hasMeta = $hasLinks || ($blockedBy ?? null) !== null;
             ?>
             <?php if ($hasMeta): ?>
@@ -48,10 +47,6 @@
                             <?php if ($app['website'] !== null): ?>
                                 <a class="button is-text" target="_blank" rel="noopener"
                                    href="<?= esc($app['website'], 'attr') ?>">Official website</a>
-                            <?php endif ?>
-                            <?php if ($canManage ?? false): ?>
-                                <a class="button is-text" target="_blank" rel="noopener"
-                                   href="<?= esc(site_url('apps/' . $app['id'] . '/logs'), 'attr') ?>">View logs</a>
                             <?php endif ?>
                         </div>
                     <?php endif ?>
@@ -93,13 +88,8 @@
                             </form>
                         <?php endif ?>
                     <?php endif ?>
-                    <form action="<?= esc(site_url('apps/' . $app['id'] . '/refresh'), 'attr') ?>" method="post"
-                          class="ml-3">
-                        <?= csrf_field() ?>
-                        <button class="button is-warning is-light is-fullwidth" type="submit" aria-live="polite"
-                            <?= ($blockedBy ?? null) !== null ? 'disabled' : '' ?>>Refresh service
-                        </button>
-                    </form>
+                    <a class="button is-light ml-3"
+                       href="<?= esc(site_url('apps/' . $app['id'] . '/logs'), 'attr') ?>">Logs</a>
                 </div>
             </footer>
         <?php endif ?>

@@ -2,7 +2,8 @@
 // do not touch
 namespace App\Controllers;
 
-use App\Libraries\ApplicationModel;
+use App\Libraries\Catalog;
+use App\Libraries\Deployment;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\ResponseInterface;
 use RuntimeException;
@@ -11,21 +12,22 @@ class Home extends BaseController
 {
     public function index(?string $category = null): ResponseInterface
     {
-        $store = new ApplicationModel();
-        $apps  = $store->catalog();
-        $running = $store->runningApps($apps);
+        $catalog = new Catalog();
+        $deployment = new Deployment($catalog);
+        $apps  = $catalog->catalog();
+        $running = $deployment->runningApps($apps);
         $canManage = session()->get('ldap_user')['isAdmin'] === true;
         $environments = [];
         if ($canManage) {
             foreach ($apps as $app) {
                 if (! $running[$app['id']]) {
-                    $environments[$app['id']] = $store->environmentFields($app);
+                    $environments[$app['id']] = $deployment->environmentFields($app);
                 }
             }
         }
         $categories = [];
         foreach ($apps as $app) {
-            $categories[$store->category($app)][] = $app;
+            $categories[$catalog->category($app)][] = $app;
         }
         uksort($categories, static function (string $first, string $second): int {
             $fileCategories = ['file-manager', 'files'];
@@ -53,7 +55,7 @@ class Home extends BaseController
         if ($this->request->getMethod() === 'POST') {
             $selectedCategory = null;
             $displayApps = array_values(array_filter($apps, fn (array $app): bool =>
-                $query === '' || mb_stripos($app['name'] . ' ' . $store->category($app), $query) !== false));
+                $query === '' || mb_stripos($app['name'] . ' ' . $catalog->category($app), $query) !== false));
         }
 
         return $this->response->setHeader('Cache-Control', 'no-store')->setBody(view('browser', [
@@ -61,7 +63,7 @@ class Home extends BaseController
             'running' => $running,
             'categories' => $categories,
             'selectedCategory' => $selectedCategory,
-            'installationBlocks' => $store->installationBlocks($apps, $running),
+            'installationBlocks' => $catalog->installationBlocks($apps, $running),
             'canManage' => $canManage,            'environments' => $environments,
             'searchQuery' => $query,
             'displayApps' => $displayApps,
@@ -70,15 +72,15 @@ class Home extends BaseController
 
     public function logo(string $id): ResponseInterface
     {
-        $store = new ApplicationModel();
+        $catalog = new Catalog();
 
         try {
-            $app = $store->find($id);
+            $app = $catalog->find($id);
         } catch (RuntimeException $exception) {
             throw PageNotFoundException::forPageNotFound($exception->getMessage());
         }
 
-        $header = $store->headerFile($app);
+        $header = $catalog->headerFile($app);
         $image  = file_get_contents($header ?? FCPATH . 'images/app-placeholder.svg');
 
         if ($image === false) {

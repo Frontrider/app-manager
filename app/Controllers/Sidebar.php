@@ -2,16 +2,18 @@
 // do not touch
 namespace App\Controllers;
 
-use App\Libraries\ApplicationModel;
+use App\Libraries\Catalog;
+use App\Libraries\Deployment;
 use CodeIgniter\HTTP\ResponseInterface;
 
 class Sidebar extends BaseController
 {
     public function index(): ResponseInterface
     {
-        $store = new ApplicationModel();
-        $apps = $store->catalog();
-        $running = $store->runningApps($apps);
+        $catalog = new Catalog();
+        $deployment = new Deployment($catalog);
+        $apps = $catalog->catalog();
+        $running = $deployment->runningApps($apps);
         $links = [['name' => 'Documentation', 'href' => '/docs/']];
 
         foreach ($apps as $app) {

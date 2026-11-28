@@ -78,6 +78,15 @@ if (($argv[1] ?? '') === 'inspect') {
     exit(0);
 }
 if (($argv[1] ?? '') === 'compose') {
+    if (getenv('CATEGORY_TEST_COMPOSE_FAIL_ONCE') !== false) {
+        $marker = getenv('CATEGORY_TEST_CALLS') . '.compose-failure';
+        if (! is_file($marker)) {
+            file_put_contents($marker, '1');
+            file_put_contents(getenv('CATEGORY_TEST_CALLS'), json_encode(array_slice($argv, 1)) . "\n", FILE_APPEND);
+            fwrite(STDERR, "simulated start failure\n");
+            exit(1);
+        }
+    }
     if (getenv('CATEGORY_TEST_SESSION_LOCK') && file_exists(getenv('CATEGORY_TEST_SESSION_LOCK'))) {
         fwrite(STDERR, "Session is still locked during deployment.\n");
         exit(1);

@@ -2,7 +2,8 @@
 
 namespace App\Controllers;
 
-use App\Libraries\ApplicationModel;
+use App\Libraries\Catalog;
+use App\Libraries\Deployment;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\ResponseInterface;
 use RuntimeException;
@@ -65,7 +66,7 @@ class ApplicationController extends BaseController
     private function readActivity(): array
     {
         try {
-            return [(new ApplicationModel())->applicationActivity(), null];
+            return [(new Deployment())->applicationActivity(), null];
         } catch (RuntimeException | \JsonException $exception) {
             log_message('error', 'Could not read application activity: {message}', [
                 'message' => $exception->getMessage(),
@@ -104,9 +105,10 @@ class ApplicationController extends BaseController
         $session = session();
         $session->close();
         try {
-            $store = new ApplicationModel();
-            $app = $store->find($id);
-            $store->deleteData($app);
+            $catalog = new Catalog();
+            $deployment = new Deployment($catalog);
+            $app = $catalog->find($id);
+            $deployment->deleteData($app);
             $level = 'success';
             $message = $app['name'] . ' stopped and its project volumes were deleted.';
         } catch (RuntimeException $exception) {
@@ -122,9 +124,9 @@ class ApplicationController extends BaseController
 
     public function confirmDeleteData(string $id): ResponseInterface
     {
-        $store = new ApplicationModel();
+        $catalog = new Catalog();
         try {
-            $app = $store->find($id);
+            $app = $catalog->find($id);
         } catch (RuntimeException $exception) {
             throw PageNotFoundException::forPageNotFound($exception->getMessage());
         }
@@ -143,23 +145,24 @@ class ApplicationController extends BaseController
     public function configure(string $id): ResponseInterface
     {
         session()->close();
-        $store = new ApplicationModel();
+        $catalog = new Catalog();
+        $deployment = new Deployment($catalog);
         try {
-            $app = $store->find($id);
+            $app = $catalog->find($id);
         } catch (RuntimeException $exception) {
             throw PageNotFoundException::forPageNotFound($exception->getMessage());
         }
 
-        $apps = $store->catalog();
-        $running = $store->runningApps($apps);
+        $apps = $catalog->catalog();
+        $running = $deployment->runningApps($apps);
 
         return $this->response
             ->setHeader('Cache-Control', 'no-store')
             ->setHeader('X-Content-Type-Options', 'nosniff')
             ->setBody(view('partials/deploy_modal', [
                 'app' => $app,
-                'environmentFields' => $store->environmentFields($app),
-                'willBlock' => array_values($store->deploymentBlocks($app, $apps, $running)),
+                'environmentFields' => $deployment->environmentFields($app),
+                'willBlock' => array_values($catalog->deploymentBlocks($app, $apps, $running)),
             ]));
     }
 
@@ -167,7 +170,7 @@ class ApplicationController extends BaseController
     {        $session = session();
         $session->close();
         try {
-            (new ApplicationModel())->stopAll();
+            (new Deployment())->stopAll();
             $level = 'success';
             $message = 'All catalog apps stopped. Containers and data were preserved.';
         } catch (RuntimeException $exception) {
@@ -189,9 +192,10 @@ class ApplicationController extends BaseController
         $deferred = null;
 
         try {
-            $store = new ApplicationModel();
-            $app   = $store->find($id);
-            $category = $store->category($app);
+            $catalog = new Catalog();
+            $deployment = new Deployment($catalog);
+            $app   = $catalog->find($id);
+            $category = $catalog->category($app);
 
             if ($action === 'install') {
                 $environment = $this->request->getPost('environment');
@@ -201,18 +205,18 @@ class ApplicationController extends BaseController
                 if ($environment !== null && ! is_array($environment)) {
                     throw new RuntimeException('Invalid app environment settings.');
                 }
-                if (! empty($store->environmentFields($app)) && $environment === null) {
+                if (! empty($deployment->environmentFields($app)) && $environment === null) {
                     throw new RuntimeException('Configure the app environment before starting it.');
                 }
-                $operation = static fn () => $store->install($app, $environment);
+                $operation = static fn () => $deployment->install($app, $environment);
                 $message = $app['name'] . ' started.';
                 $pending = $app['name'] . ' is starting. This can take a while.';
             } elseif ($action === 'refresh') {
-                $operation = static fn () => $store->refresh($app);
+                $operation = static fn () => $deployment->refresh($app);
                 $message = $app['name'] . ' refreshed.';
                 $pending = $app['name'] . ' is refreshing. This can take a while.';
             } else {
-                $store->uninstall($app);
+                $deployment->uninstall($app);
                 $message = $app['name'] . ' stopped.';
             }
             $level = 'success';
